@@ -69,6 +69,15 @@ function fmt(n) {
     return n.toLocaleString();
 }
 
+function warHoursElapsed() {
+    if (!state.war.startDate) return 0;
+    const start  = new Date(state.war.startDate + 'T00:00:00');
+    const now    = new Date();
+    const end    = state.war.endDate ? new Date(state.war.endDate + 'T23:59:59') : now;
+    const cutoff = end < now ? end : now;
+    return Math.max(1, (cutoff - start) / 3_600_000);
+}
+
 function clanTotal(clan) {
     const fromPlayers = clan.players.reduce((s, p) => s + (p.points || 0), 0);
     return Math.max(fromPlayers, clan.battleTotal || 0);
@@ -244,7 +253,6 @@ function renderPlayersTable(clan) {
     const search   = (document.getElementById('player-search').value || '').toLowerCase();
     const sortMode = document.getElementById('sort-select').value;
     const total    = clanTotal(clan);
-    const avg      = clan.players.length ? total / clan.players.length : 0;
 
     let players = [...clan.players];
 
@@ -272,13 +280,12 @@ function renderPlayersTable(clan) {
         return;
     }
 
+    const hours = warHoursElapsed();
+
     tbody.innerHTML = players.map((p, idx) => {
         const pct      = total > 0 ? ((p.points / total) * 100).toFixed(1) : '0.0';
         const barWidth = total > 0 ? Math.round((p.points / total) * 100) : 0;
-        const diff     = avg > 0 ? p.points - avg : 0;
-        const diffPct  = avg > 0 ? ((diff / avg) * 100).toFixed(1) : null;
-        const vsClass  = diff > 0 ? 'vs-above' : diff < 0 ? 'vs-below' : 'vs-equal';
-        const vsText   = diffPct !== null ? (diff >= 0 ? '+' : '') + diffPct + '%' : '—';
+        const ptsPerHr = hours > 0 ? p.points / hours : 0;
         return `
           <tr>
             <td class="player-rank">${idx + 1}</td>
@@ -293,7 +300,7 @@ function renderPlayersTable(clan) {
                 <div class="mini-bar-fill" style="width:${barWidth}%;background:${clan.color}"></div>
               </div>
             </td>
-            <td class="player-vsavg ${vsClass}">${vsText}</td>
+            <td class="player-vsavg">${hours > 1 ? fmt(ptsPerHr) + '/hr' : '—'}</td>
           </tr>`;
     }).join('');
 }
@@ -601,14 +608,30 @@ async function importClanByName(clanName, battleTotal = 0) {
     const battleId = state.war.battleId || '';
     const contrib  = clanData.Contribution || {};
 
-    let battleArr = Array.isArray(contrib[battleId]) ? contrib[battleId] : [];
+    // Normalize any contribution value (array or dict) into a flat array of {UserID, Points}
+    function normalizeContrib(val) {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        // Object form: {"userId": points} or {"userId": {Points: n}}
+        if (typeof val === 'object') {
+            return Object.entries(val).map(([uid, v]) => ({
+                UserID: Number(uid),
+                Points: typeof v === 'object' ? (v.Points ?? v.points ?? v.Damage ?? v.damage ?? 0) : Number(v),
+            }));
+        }
+        return [];
+    }
+
+    // Try stored battleId first; then auto-discover the key with most entries
+    let battleArr = normalizeContrib(contrib[battleId]);
     if (!battleArr.length) {
-        const bestKey = Object.keys(contrib)
-            .filter(k => Array.isArray(contrib[k]) && contrib[k].length > 0)
-            .sort((a, b) => contrib[b].length - contrib[a].length)[0];
+        let bestKey = '', bestLen = 0, bestArr = [];
+        for (const k of Object.keys(contrib)) {
+            const arr = normalizeContrib(contrib[k]);
+            if (arr.length > bestLen) { bestLen = arr.length; bestKey = k; bestArr = arr; }
+        }
         if (bestKey) {
-            battleArr = contrib[bestKey];
-            // Cache the discovered key so future imports reuse it
+            battleArr = bestArr;
             if (!state.war.battleId) state.war.battleId = bestKey;
         }
     }
