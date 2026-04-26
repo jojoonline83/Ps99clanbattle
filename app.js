@@ -275,9 +275,16 @@ function renderPlayersTable(clan) {
         return;
     }
 
-    const hours = warHoursElapsed();
-
     const now  = Date.now();
+
+    // Hours elapsed: prefer war startDate, fall back to oldest clan snapshot
+    let hours = warHoursElapsed();
+    if (hours === 0) {
+        const snaps = clan.snapshots || [];
+        const oldest = snaps.length ? Math.min(...snaps.map(s => s.ts)) : now;
+        hours = Math.max(1, (now - oldest) / 3_600_000);
+    }
+
     // Use previous refresh snapshot for delta (available after 2nd import)
     const snap = clan.prevSnapshot || null;
     const snapAgeMin = snap ? Math.round((now - snap.ts) / 60000) : null;
@@ -286,14 +293,14 @@ function renderPlayersTable(clan) {
         : '';
 
     tbody.innerHTML = players.map((p, idx) => {
-        const ptsPerHr = hours > 1 ? p.points / hours : 0;
+        const ptsPerHr = p.points / hours;
 
         // Points gained since previous refresh
         const prevPts = snap?.pts?.[p.userId] ?? null;
         const delta1h = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
 
-        const avgHrText   = hours > 1 ? fmt(Math.round(ptsPerHr)) + '/hr' : null;
-        const delta1hText = (delta1h !== null && (delta1h > 0 || prevPts !== null))
+        const avgHrText   = fmt(Math.round(ptsPerHr)) + '/hr';
+        const delta1hText = delta1h !== null
             ? `+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
             : null;
         const subLine = [avgHrText, delta1hText].filter(Boolean).join('  ·  ');
