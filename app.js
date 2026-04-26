@@ -641,21 +641,25 @@ function setLiveBtnsDisabled(disabled) {
 
 async function apiFetch(path) {
     const url = `${API_BASE}${path}`;
-    // 1. Try direct (works if biggamesapi allows the origin)
+    // Returns true if the parsed JSON looks like real API data (not a proxy error wrapper)
+    const isValid = d => d && typeof d === 'object' && !d.error && !d.Error
+        && !(typeof d.message === 'string' && d.message.toLowerCase().includes('timeout'));
+
+    // 1. Try direct
     try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (res.ok) return await res.json();
+        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (res.ok) { const d = await res.json(); if (isValid(d)) return d; }
     } catch (_) {}
     // 2. Try each CORS proxy in order
     for (const proxy of CORS_PROXIES) {
         try {
             const res = await fetch(proxy + encodeURIComponent(url), {
-                signal: AbortSignal.timeout(12000)
+                signal: AbortSignal.timeout(20000)
             });
-            if (res.ok) return await res.json();
+            if (res.ok) { const d = await res.json(); if (isValid(d)) return d; }
         } catch (_) {}
     }
-    throw new Error('API unavailable – check your connection or try again');
+    throw new Error('API unavailable – check connection or try again later');
 }
 
 // Resolve Roblox UserIDs → usernames in batches of 100
