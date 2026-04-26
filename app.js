@@ -273,7 +273,7 @@ function renderPlayersTable(clan) {
     if (players.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">
+            <td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">
               ${search ? 'No players match your search.' : 'No players yet.'}
             </td>
           </tr>`;
@@ -293,7 +293,6 @@ function renderPlayersTable(clan) {
 
     tbody.innerHTML = players.map((p, idx) => {
         const pct      = total > 0 ? ((p.points / total) * 100).toFixed(1) : '0.0';
-        const barWidth = total > 0 ? Math.round((p.points / total) * 100) : 0;
         const ptsPerHr = hours > 1 ? p.points / hours : 0;
 
         // Points gained since ~1hr ago snapshot
@@ -309,11 +308,6 @@ function renderPlayersTable(clan) {
             </td>
             <td class="player-points" style="color:${clan.color}">${fmt(p.points)}</td>
             <td class="player-pct">${pct}%</td>
-            <td>
-              <div class="mini-bar">
-                <div class="mini-bar-fill" style="width:${barWidth}%;background:${clan.color}"></div>
-              </div>
-            </td>
             <td class="player-vsavg">${hours > 1 ? fmt(ptsPerHr) + '/hr' : '—'}</td>
             <td class="player-1hr">${delta1h !== null ? fmt(delta1h) : '—'}</td>
           </tr>`;
