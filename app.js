@@ -621,8 +621,21 @@ async function importClanByName(clanName, battleTotal = 0) {
         if (id) battlePoints[id] = pts;
     });
 
-    const members = clanData.Members || clanData.members || [];
-    const allIds  = members.map(m => m.UserID ?? m.userId ?? m.id).filter(Boolean);
+    let members = clanData.Members || clanData.members || [];
+
+    // Owner is sometimes not in the Members array — add them if missing
+    const ownerID = clanData.Owner ?? clanData.owner;
+    if (ownerID) {
+        const alreadyIn = members.some(m => (m.UserID ?? m.userId ?? m.id) == ownerID);
+        if (!alreadyIn) {
+            members = [{ UserID: ownerID, PermissionLevel: 255 }, ...members];
+        }
+    }
+
+    // Filter out entries with no valid ID (but keep UserID=0 just in case)
+    const allIds = members
+        .map(m => m.UserID ?? m.userId ?? m.id)
+        .filter(id => id !== null && id !== undefined && id !== '');
 
     setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…`, 'loading');
     const usernameMap = await resolveUsernames(allIds);
@@ -675,9 +688,10 @@ async function loadBattleData({ silent = false } = {}) {
         const startTime = cfgData.StartTime  ? new Date(cfgData.StartTime  * 1000) : null;
         const endTime   = cfgData.FinishTime ? new Date(cfgData.FinishTime * 1000) : null;
 
-        // 2. Top clans sorted by Points — this IS the battle leaderboard
-        const clansRaw = await apiFetch('/clans?page=1&pageSize=50&sort=Points&sortOrder=desc');
-        const clanList = clansRaw?.data || [];
+        // 2. Top clans sorted by Points — fetch enough pages to cover the full battle
+        const page1 = await apiFetch('/clans?page=1&pageSize=100&sort=Points&sortOrder=desc');
+        const page2 = await apiFetch('/clans?page=2&pageSize=100&sort=Points&sortOrder=desc');
+        const clanList = [...(page1?.data || []), ...(page2?.data || [])];
         if (!clanList.length) throw new Error('No clan data returned');
 
         // 3. Rebuild state
