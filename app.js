@@ -256,10 +256,9 @@ function renderClanDetail() {
     }
     if (clan._debug) {
         const d = clan._debug;
-        dbgEl.innerHTML = `<b>DEBUG — contribution lookup</b><br>
-activeBattleId: <b>${esc(d.activeBattleId)}</b>  lastBattleKey: <b>${esc(d.lastBattleKey)}</b><br>
-usedKey: <b>${esc(d.usedKey)}</b>  entries: <b>${d.entryCount}</b>  playerSum: <b>${d.playerSum}</b><br>
-lastBattleEntry[0]: <code>${esc(d.lastEntry)}</code><br>
+        dbgEl.innerHTML = `<b>DEBUG — battles["${esc(d.lastBattleKey)}"] inner keys:</b><br>
+<code style="font-size:10px">${esc(d.innerKeys)}</code><br>
+activeBattleId: <b>${esc(d.activeBattleId)}</b>  usedKey: <b>${esc(d.usedKey)}</b>  entries: <b>${d.entryCount}</b><br>
 usedEntry[0]: <code>${esc(d.usedEntry)}</code>`;
         dbgEl.style.display = 'block';
     } else {
@@ -735,18 +734,18 @@ async function importClanByName(clanName, battleTotal = 0) {
     const playerSum = players.reduce((s, p) => s + p.points, 0);
     const resolvedTotal = Math.max(playerSum, battleTotal);
 
-    // Debug info — stored so renderClanDetail can display it
-    const lastRaw    = battles[lastBattleKey];
-    const lastFirst  = Array.isArray(lastRaw) ? lastRaw[0]
-                     : (lastRaw && typeof lastRaw === 'object') ? Object.entries(lastRaw)[0]
-                     : null;
+    // Debug info — show all keys inside battles[lastBattleKey] to find where player data lives
+    const lastRaw     = battles[lastBattleKey] || {};
+    const innerKeys   = typeof lastRaw === 'object' && !Array.isArray(lastRaw)
+        ? Object.entries(lastRaw).map(([k, v]) => `${k}(${Array.isArray(v) ? 'arr'+v.length : typeof v})`).join(', ')
+        : (Array.isArray(lastRaw) ? `array[${lastRaw.length}]` : String(lastRaw));
     const _debug = {
         activeBattleId: activeBattleId || '(empty)',
         lastBattleKey:  lastBattleKey  || '(none)',
         usedKey:        usedKey        || 'NONE',
         entryCount:     battleArr.length,
         playerSum,
-        lastEntry:  lastFirst  ? JSON.stringify(lastFirst)  : 'empty',
+        innerKeys,
         usedEntry:  battleArr[0] ? JSON.stringify(battleArr[0]) : 'none',
     };
 
