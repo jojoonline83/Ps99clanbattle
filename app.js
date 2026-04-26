@@ -642,6 +642,13 @@ async function importClanByName(clanName, battleTotal = 0) {
     console.log(`[PS99] Using key "${usedKey}" → ${battleArr.length} entries`);
     if (battleArr.length) console.log('[PS99] Sample entry:', JSON.stringify(battleArr[0]));
 
+    // Visible debug toast so we can diagnose without DevTools
+    {
+        const allKeys = Object.keys(contrib);
+        const sample  = battleArr[0] ? JSON.stringify(battleArr[0]).slice(0, 80) : 'none';
+        toast(`[Debug] keys:[${allKeys.join(',')}] used:"${usedKey}" n=${battleArr.length} s=${sample}`, 'info');
+    }
+
     const battlePoints = {};
     battleArr.forEach(c => {
         const id  = String(c.UserID ?? c.userId ?? c.Id ?? c.ID ?? c.id ?? '');
