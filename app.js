@@ -246,6 +246,26 @@ function renderClanDetail() {
     document.getElementById('clan-detail-rank').textContent    = `#${rank}`;
     document.getElementById('clan-detail-avg').textContent     = fmt(avg);
 
+    // Debug panel — shows raw contribution info until we confirm points work
+    let dbgEl = document.getElementById('contrib-debug');
+    if (!dbgEl) {
+        dbgEl = document.createElement('div');
+        dbgEl.id = 'contrib-debug';
+        dbgEl.style.cssText = 'margin:8px 0;padding:10px 14px;background:#1a1a2e;border:1px solid #f59e0b;border-radius:8px;font-size:11px;color:#f59e0b;word-break:break-all;line-height:1.6';
+        document.getElementById('clan-detail-header').after(dbgEl);
+    }
+    if (clan._debug) {
+        const d = clan._debug;
+        dbgEl.innerHTML = `<b>DEBUG — contribution lookup</b><br>
+contribKeys: <b>${esc(d.contribKeys)}</b><br>
+usedKey: <b>${esc(d.usedKey || 'NONE')}</b>  entries: <b>${d.entryCount}</b>  playerSum: <b>${d.playerSum}</b><br>
+sampleEntry: <code>${esc(d.sampleEntry)}</code><br>
+memberID[0]: <b>${esc(d.sampleMemberId)}</b>  battlePointsKey[0]: <b>${esc(d.sampleBPKey)}</b>`;
+        dbgEl.style.display = 'block';
+    } else {
+        dbgEl.style.display = 'none';
+    }
+
     renderPlayersTable(clan);
 }
 
@@ -642,13 +662,6 @@ async function importClanByName(clanName, battleTotal = 0) {
     console.log(`[PS99] Using key "${usedKey}" → ${battleArr.length} entries`);
     if (battleArr.length) console.log('[PS99] Sample entry:', JSON.stringify(battleArr[0]));
 
-    // Visible debug toast so we can diagnose without DevTools
-    {
-        const allKeys = Object.keys(contrib);
-        const sample  = battleArr[0] ? JSON.stringify(battleArr[0]).slice(0, 80) : 'none';
-        toast(`[Debug] keys:[${allKeys.join(',')}] used:"${usedKey}" n=${battleArr.length} s=${sample}`, 'info');
-    }
-
     const battlePoints = {};
     battleArr.forEach(c => {
         const id  = String(c.UserID ?? c.userId ?? c.Id ?? c.ID ?? c.id ?? '');
@@ -690,23 +703,33 @@ async function importClanByName(clanName, battleTotal = 0) {
     });
 
     const playerSum = players.reduce((s, p) => s + p.points, 0);
-    // Use whichever is larger: summed player points or the clan total from the battle response
     const resolvedTotal = Math.max(playerSum, battleTotal);
+
+    // Debug info — stored so renderClanDetail can display it
+    const sampleEntry   = battleArr[0] ? JSON.stringify(battleArr[0]) : 'none';
+    const sampleMember  = validMembers[0] ? String(validMembers[0].UserID ?? validMembers[0].userId ?? validMembers[0].id) : 'none';
+    const sampleBPKey   = Object.keys(battlePoints)[0] ?? 'none';
+    const _debug = {
+        contribKeys: Object.keys(contrib).join(', ') || 'EMPTY',
+        usedKey,
+        entryCount: battleArr.length,
+        sampleEntry,
+        sampleMemberId: sampleMember,
+        sampleBPKey,
+        playerSum,
+    };
 
     const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
     if (existing) {
         existing.players     = players;
         existing.battleTotal = resolvedTotal;
+        existing._debug      = _debug;
     } else {
         const color = PALETTE[state.nextColorIdx % PALETTE.length];
         state.nextColorIdx = (state.nextColorIdx + 1) % PALETTE.length;
         state.clans.push({
-            id: uid(),
-            name: clanData.Name || clanName,
-            tag:  '',
-            color,
-            players,
-            battleTotal: resolvedTotal,
+            id: uid(), name: clanData.Name || clanName,
+            tag: '', color, players, battleTotal: resolvedTotal, _debug,
         });
     }
 
