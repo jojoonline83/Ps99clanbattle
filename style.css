@@ -368,10 +368,8 @@ main {
     letter-spacing: .3px;
     text-align: right;
     white-space: nowrap;
+    color: var(--text-secondary);
 }
-.vs-above { color: var(--success); }
-.vs-below { color: var(--danger); }
-.vs-equal { color: var(--text-muted); }
 
 /* ── Compare View ── */
 .view-title { font-size: 22px; font-weight: 800; margin-bottom: 24px; }
