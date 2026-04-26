@@ -246,24 +246,6 @@ function renderClanDetail() {
     document.getElementById('clan-detail-rank').textContent    = `#${rank}`;
     document.getElementById('clan-detail-avg').textContent     = fmt(avg);
 
-    // Debug panel — shows raw contribution info until we confirm points work
-    let dbgEl = document.getElementById('contrib-debug');
-    if (!dbgEl) {
-        dbgEl = document.createElement('div');
-        dbgEl.id = 'contrib-debug';
-        dbgEl.style.cssText = 'margin:8px 0;padding:10px 14px;background:#1a1a2e;border:1px solid #f59e0b;border-radius:8px;font-size:11px;color:#f59e0b;word-break:break-all;line-height:1.6';
-        document.getElementById('clan-detail-header').after(dbgEl);
-    }
-    if (clan._debug) {
-        const d = clan._debug;
-        dbgEl.innerHTML = `<b>DEBUG — PointContributions</b><br>
-activeBattleId: <b>${esc(d.activeBattleId)}</b>  entries: <b>${d.ptContribLen}</b>  matchedPlayers: <b>${d.bpKeys}</b>  playerSum: <b>${d.playerSum}</b><br>
-sampleEntry: <code>${esc(d.sampleEntry)}</code>`;
-        dbgEl.style.display = 'block';
-    } else {
-        dbgEl.style.display = 'none';
-    }
-
     renderPlayersTable(clan);
 }
 
@@ -620,13 +602,6 @@ async function importClanByName(clanName, battleTotal = 0) {
 
     const clanData = raw.data;
 
-    // Log every top-level field so we can find where player points live
-    console.log('[PS99] clanData keys:', Object.keys(clanData));
-    const firstMember = (clanData.Members || clanData.members || [])[0];
-    if (firstMember) console.log('[PS99] Member[0] fields:', JSON.stringify(firstMember));
-    if (clanData.Battles) console.log('[PS99] Battles:', JSON.stringify(clanData.Battles).slice(0, 500));
-
-    // ── Find player battle points ──────────────────────────────────────────
     // The API stores current battle data in clanData.Battles (not Contribution)
     // Contribution is only populated after a battle ends.
     const battleId  = state.war.battleId || '';
@@ -673,9 +648,6 @@ async function importClanByName(clanName, battleTotal = 0) {
         battleTotal = battleObj.Points;
     }
 
-    console.log('[PS99] activeBattleId:', activeBattleId, '| PointContributions entries:', battleArr.length);
-    if (battleArr[0]) console.log('[PS99] sample entry:', JSON.stringify(battleArr[0]));
-
     const battlePoints = {};
     battleArr.forEach(c => {
         const id  = String(c.UserID ?? c.userId ?? c.Id ?? c.ID ?? c.id ?? '');
@@ -702,8 +674,7 @@ async function importClanByName(clanName, battleTotal = 0) {
 
     const allIds = validMembers.map(m => m.UserID ?? m.userId ?? m.id);
 
-    const keyInfo = usedKey ? ` [key: ${usedKey}, ${battleArr.length} entries]` : ' [no contribution data found]';
-    setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…${keyInfo}`, 'loading');
+    setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…`, 'loading');
     const usernameMap = await resolveUsernames(allIds);
 
     const players = validMembers.map(m => {
@@ -716,28 +687,19 @@ async function importClanByName(clanName, battleTotal = 0) {
         };
     });
 
-    const playerSum = players.reduce((s, p) => s + p.points, 0);
+    const playerSum     = players.reduce((s, p) => s + p.points, 0);
     const resolvedTotal = Math.max(playerSum, battleTotal);
-
-    const _debug = {
-        activeBattleId: activeBattleId || '(empty)',
-        ptContribLen:   battleArr.length,
-        playerSum,
-        sampleEntry:    battleArr[0] ? JSON.stringify(battleArr[0]) : 'none',
-        bpKeys:         Object.keys(battlePoints).length,
-    };
 
     const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
     if (existing) {
         existing.players     = players;
         existing.battleTotal = resolvedTotal;
-        existing._debug      = _debug;
     } else {
         const color = PALETTE[state.nextColorIdx % PALETTE.length];
         state.nextColorIdx = (state.nextColorIdx + 1) % PALETTE.length;
         state.clans.push({
             id: uid(), name: clanData.Name || clanName,
-            tag: '', color, players, battleTotal: resolvedTotal, _debug,
+            tag: '', color, players, battleTotal: resolvedTotal,
         });
     }
 
