@@ -682,6 +682,46 @@ main {
 .toast.error   { border-left: 3px solid var(--danger);  color: var(--danger); }
 .toast.info    { border-left: 3px solid var(--accent);  color: #818cf8; }
 
+/* ── Refresh button ── */
+.btn-refresh {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+}
+.btn-refresh:hover    { background: var(--bg-card); color: var(--text-primary); border-color: var(--accent); }
+.btn-refresh:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Skeleton loading ── */
+.skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 18px;
+}
+.skeleton-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 22px;
+    display: flex; flex-direction: column; gap: 14px;
+}
+.sk {
+    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 6px;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+.sk-title { height: 18px; width: 60%; }
+.sk-pts   { height: 32px; width: 40%; }
+.sk-bar   { height: 6px;  width: 100%; }
+.sk-foot  { height: 14px; width: 80%; }
+
 /* ── Live Import Card ── */
 .live-card {
     border-color: rgba(99,102,241,.4);
