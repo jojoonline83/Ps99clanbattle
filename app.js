@@ -304,15 +304,21 @@ function renderClanDetail() {
         : '—';
 
     // Header
+    const setEl = (id, val, color) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = val;
+        if (color) el.style.color = color;
+    };
     document.getElementById('clan-detail-color-bar').style.background = clan.color;
-    document.getElementById('clan-detail-name').textContent = clan.name;
-    document.getElementById('clan-detail-tag').textContent  = clan.tag || '';
-    document.getElementById('clan-detail-points').textContent  = fmt(total);
-    document.getElementById('clan-detail-players').textContent = clan.players.length;
-    document.getElementById('clan-detail-rank').textContent    = `#${rank}`;
-    document.getElementById('clan-detail-avg').textContent     = fmt(avgHr) + '/hr';
-    document.getElementById('clan-detail-delta').textContent   = deltaText;
-    document.getElementById('clan-detail-delta5m').textContent = delta5mText;
+    setEl('clan-detail-name',    clan.name);
+    setEl('clan-detail-tag',     clan.tag || '');
+    setEl('clan-detail-points',  fmt(total));
+    setEl('clan-detail-players', clan.players.length);
+    setEl('clan-detail-rank',    `#${rank}`);
+    setEl('clan-detail-avg',     fmt(avgHr) + '/hr',  'var(--text-secondary)');
+    setEl('clan-detail-delta',   deltaText,            'var(--success)');
+    setEl('clan-detail-delta5m', delta5mText,          '#f59e0b');
 
     renderPlayersTable(clan);
 }
@@ -384,21 +390,20 @@ function renderPlayersTable(clan) {
         const prev5mPts = snap5m?.pts?.[p.userId] ?? null;
         const delta5m   = prev5mPts !== null ? Math.max(0, p.points - prev5mPts) : null;
 
-        const avgHrText   = fmt(Math.round(ptsPerHr)) + '/hr';
-        const delta1hText = delta1h !== null
-            ? `+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
-            : null;
-        const delta5mText = delta5m !== null
-            ? `+${fmt(delta5m)}${snap5mAge !== null ? ' (' + snap5mAge + 'm)' : ''}`
-            : null;
-        const subLine = [avgHrText, delta1hText, delta5mText].filter(Boolean).join('  ·  ');
+        const avgSpan    = `<span class="sub-avg">${fmt(Math.round(ptsPerHr))}/hr</span>`;
+        const deltaSpan  = delta1h !== null
+            ? `<span class="sub-delta">+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}</span>`
+            : '';
+        const delta5Span = delta5m !== null
+            ? `<span class="sub-5m">+${fmt(delta5m)}${snap5mAge !== null ? ' (' + snap5mAge + 'm)' : ''}</span>`
+            : '';
 
         return `
           <tr>
             <td class="player-rank">${idx + 1}</td>
             <td class="player-name">
               <div>${esc(p.username)} <span class="role-badge ${getRoleClass(p.role)}">${esc(p.role || 'Member')}</span></div>
-              ${subLine ? `<div class="player-sub">${esc(subLine)}</div>` : ''}
+              <div class="player-sub">${avgSpan}${deltaSpan}${delta5Span}</div>
             </td>
             <td class="player-points" style="color:${clan.color}">${fmt(p.points)}</td>
           </tr>`;

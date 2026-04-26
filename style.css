@@ -368,11 +368,16 @@ main {
 .mini-bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
 
 .player-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 3px;
     font-size: 11px;
-    color: var(--success);
-    margin-top: 2px;
     font-weight: 600;
 }
+.sub-avg   { color: var(--text-secondary); }
+.sub-delta { color: var(--success); }
+.sub-5m    { color: #f59e0b; }
 
 /* ── Compare View ── */
 .view-title { font-size: 22px; font-weight: 800; margin-bottom: 24px; }
