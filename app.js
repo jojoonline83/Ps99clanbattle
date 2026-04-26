@@ -277,25 +277,26 @@ function renderPlayersTable(clan) {
 
     const hours = warHoursElapsed();
 
-    // Find snapshot closest to 1 hour ago for the Last 1Hr column
-    const now      = Date.now();
-    const hrAgo    = now - 3_600_000;
-    const snapshots = clan.snapshots || [];
-    // Best snapshot: taken at or before 1hr ago, most recent of those
-    const snap = snapshots
-        .filter(s => s.ts <= hrAgo)
-        .sort((a, b) => b.ts - a.ts)[0] || null;
+    const now  = Date.now();
+    // Use previous refresh snapshot for delta (available after 2nd import)
+    const snap = clan.prevSnapshot || null;
+    const snapAgeMin = snap ? Math.round((now - snap.ts) / 60000) : null;
+    const ageLabel   = snapAgeMin !== null
+        ? (snapAgeMin >= 60 ? `${Math.round(snapAgeMin / 60)}hr` : `${snapAgeMin}m`) + ' ago'
+        : '';
 
     tbody.innerHTML = players.map((p, idx) => {
         const ptsPerHr = hours > 1 ? p.points / hours : 0;
 
-        // Points gained since ~1hr ago snapshot
-        const prevPts  = snap?.pts?.[p.userId] ?? null;
-        const delta1h  = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
+        // Points gained since previous refresh
+        const prevPts = snap?.pts?.[p.userId] ?? null;
+        const delta1h = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
 
-        const avgHrText  = hours > 1 ? fmt(Math.round(ptsPerHr)) + '/hr' : null;
-        const delta1hText = delta1h !== null ? '+' + fmt(delta1h) + ' last hr' : null;
-        const subLine    = [avgHrText, delta1hText].filter(Boolean).join('  ·  ');
+        const avgHrText   = hours > 1 ? fmt(Math.round(ptsPerHr)) + '/hr' : null;
+        const delta1hText = (delta1h !== null && (delta1h > 0 || prevPts !== null))
+            ? `+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
+            : null;
+        const subLine = [avgHrText, delta1hText].filter(Boolean).join('  ·  ');
 
         return `
           <tr>
@@ -695,16 +696,21 @@ async function importClanByName(clanName, battleTotal = 0) {
     const playerSum     = players.reduce((s, p) => s + p.points, 0);
     const resolvedTotal = Math.max(playerSum, battleTotal);
 
-    // Snapshot: record current points by userId so we can compute last-1hr delta
+    // Snapshot: record current points by userId so we can compute delta on next refresh
     const now      = Date.now();
     const snapshot = { ts: now, pts: {} };
     players.forEach(p => { snapshot.pts[p.userId] = p.points; });
 
     const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
     if (existing) {
+        // Capture the most recent previous snapshot BEFORE adding the new one
+        const prevSnap = existing.snapshots?.length
+            ? existing.snapshots[existing.snapshots.length - 1]
+            : null;
+        existing.prevSnapshot = prevSnap;
+
         if (!existing.snapshots) existing.snapshots = [];
         existing.snapshots.push(snapshot);
-        // Keep only the last 25 hours of snapshots
         existing.snapshots = existing.snapshots.filter(s => now - s.ts < 25 * 3_600_000);
         existing.players     = players;
         existing.battleTotal = resolvedTotal;
@@ -714,7 +720,7 @@ async function importClanByName(clanName, battleTotal = 0) {
         state.clans.push({
             id: uid(), name: clanData.Name || clanName,
             tag: '', color, players, battleTotal: resolvedTotal,
-            snapshots: [snapshot],
+            snapshots: [snapshot], prevSnapshot: null,
         });
     }
 
