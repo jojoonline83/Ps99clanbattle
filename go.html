@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Loading...</title>
+<script>
+// Clear all cached resources for this site then redirect to fresh URL
+if ('caches' in window) {
+    caches.keys().then(function(names) {
+        names.forEach(function(n) { caches.delete(n); });
+    });
+}
+// Navigate to a URL the browser has never seen — forces fresh fetch
+var ts = Date.now();
+location.replace('index.html?v=' + ts);
+</script>
+</head>
+<body>Loading fresh version…</body>
+</html>
