@@ -307,8 +307,8 @@ function renderClanDetail() {
     setEl('clan-detail-points',  fmt(total));
     setEl('clan-detail-players', clan.players.length);
     setEl('clan-detail-rank',    `#${rank}`);
-    setEl('clan-detail-avg',     fmt(avgHr) + '/hr',  'var(--text-secondary)');
-    setEl('clan-detail-delta',   deltaText,            'var(--success)');
+    setEl('clan-detail-avg',     fmt(avgHr) + '/hr',  '#94a3b8');
+    setEl('clan-detail-delta',   deltaText,            '#10b981');
     setEl('clan-detail-delta5m', delta5mText,          '#f59e0b');
 
     renderPlayersTable(clan);
@@ -377,11 +377,11 @@ function renderPlayersTable(clan) {
             pts5min = Math.round(ptsPerHr / 12);
         }
 
-        const avgSpan   = `<span class="sub-avg">${fmt(Math.round(ptsPerHr))}/hr</span>`;
+        const avgSpan   = `<span style="color:#94a3b8;font-size:11px;font-weight:600">${fmt(Math.round(ptsPerHr))}/hr</span>`;
         const deltaSpan = delta1h !== null
-            ? `<span class="sub-delta">+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}</span>`
+            ? `<span style="color:#10b981;font-size:11px;font-weight:600">+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}</span>`
             : '';
-        const pts5Span  = `<span class="sub-5m">${fmt(pts5min)}/5m</span>`;
+        const pts5Span  = `<span style="color:#f59e0b;font-size:11px;font-weight:600">${fmt(pts5min)}/5m</span>`;
 
         return `
           <tr>
