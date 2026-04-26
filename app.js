@@ -6,6 +6,8 @@
 
 // ── Constants ──────────────────────────────
 const STORAGE_KEY = 'ps99_tracker_v1';
+const API_BASE    = 'https://biggamesapi.io/api';
+const CORS_PROXY  = 'https://corsproxy.io/?url=';
 
 const PALETTE = [
     '#6366f1', // indigo
@@ -198,6 +200,7 @@ function renderDashboard() {
               <span>${clan.players.length} player${clan.players.length !== 1 ? 's' : ''}</span>
               <span>${topPlayer ? '🏆 ' + esc(topPlayer.username) : 'Click to manage'}</span>
             </div>
+            <button class="clan-refresh-btn" onclick="event.stopPropagation();refreshClan('${clan.id}')" title="Refresh from API">🔄</button>
           </div>`;
     }).join('');
 }
@@ -514,6 +517,211 @@ function deleteClan(clanId) {
     );
 }
 
+// ── Live PS99 API ──────────────────────────
+
+function setImportStatus(msg, type = '') {
+    const el = document.getElementById('import-status');
+    if (!el) return;
+    el.className = `import-status ${type}`;
+    el.innerHTML = type === 'loading'
+        ? `<span class="spinner"></span>${msg}`
+        : msg;
+}
+
+function setLiveBtnsDisabled(disabled) {
+    const ids = ['fetch-active-battle-btn', 'fetch-clan-btn'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+    });
+}
+
+async function apiFetch(path) {
+    const url = `${API_BASE}${path}`;
+    // Try direct first, then CORS proxy
+    try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error('not ok');
+        return await res.json();
+    } catch {
+        const proxyRes = await fetch(CORS_PROXY + encodeURIComponent(url), {
+            signal: AbortSignal.timeout(12000)
+        });
+        if (!proxyRes.ok) throw new Error(`API error: ${proxyRes.status}`);
+        return await proxyRes.json();
+    }
+}
+
+// Resolve Roblox UserIDs → usernames in batches of 100
+async function resolveUsernames(userIds) {
+    if (!userIds.length) return {};
+    const map = {};
+    try {
+        // batch up to 100 at a time
+        for (let i = 0; i < userIds.length; i += 100) {
+            const batch = userIds.slice(i, i + 100);
+            const res = await fetch('https://users.roblox.com/v1/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userIds: batch, excludeBannedUsers: false }),
+                signal: AbortSignal.timeout(8000),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                (data.data || []).forEach(u => { map[u.id] = u.name; });
+            }
+        }
+    } catch { /* usernames stay as ID fallbacks */ }
+    return map;
+}
+
+function permToRole(level) {
+    if (level >= 255) return 'Leader';
+    if (level >= 200) return 'Co-Leader';
+    if (level >= 90)  return 'Officer';
+    return 'Member';
+}
+
+async function importClanByName(clanName) {
+    setImportStatus(`Fetching clan "${clanName}"…`, 'loading');
+
+    const raw = await apiFetch(`/clan/${encodeURIComponent(clanName)}`);
+    if (raw.status !== 'ok' || !raw.data) throw new Error('Clan not found');
+
+    const clan = raw.data;
+
+    // Battle points indexed by UserID
+    const battlePoints = {};
+    (clan.Contribution?.Battle || []).forEach(c => {
+        battlePoints[String(c.UserID)] = c.Points || 0;
+    });
+
+    const members   = clan.Members || [];
+    const allIds    = members.map(m => m.UserID);
+
+    setImportStatus(`Resolving ${allIds.length} usernames…`, 'loading');
+    const usernameMap = await resolveUsernames(allIds);
+
+    const players = members.map(m => ({
+        id:       uid(),
+        username: usernameMap[m.UserID] || `User_${m.UserID}`,
+        points:   battlePoints[String(m.UserID)] || 0,
+        role:     permToRole(m.PermissionLevel || 0),
+    }));
+
+    // Update existing clan or create new
+    const existing = state.clans.find(
+        c => c.name.toLowerCase() === clanName.toLowerCase()
+    );
+
+    if (existing) {
+        existing.players = players;
+    } else {
+        const color = PALETTE[state.nextColorIdx % PALETTE.length];
+        state.nextColorIdx = (state.nextColorIdx + 1) % PALETTE.length;
+        state.clans.push({
+            id: uid(),
+            name: clan.Name || clanName,
+            tag:  `[${(clan.Name || clanName).slice(0, 6).toUpperCase()}]`,
+            color,
+            players,
+        });
+    }
+
+    save();
+    return clan.Name || clanName;
+}
+
+async function fetchActiveBattle() {
+    setLiveBtnsDisabled(true);
+    try {
+        setImportStatus('Fetching active clan battle…', 'loading');
+
+        const raw = await apiFetch('/activeClanBattle');
+        if (raw.status !== 'ok' || !raw.data) throw new Error('No active battle found');
+
+        const battleData = raw.data;
+
+        // The response may be an array of clan entries or an object with a Battle array
+        let clanEntries = [];
+        if (Array.isArray(battleData)) {
+            clanEntries = battleData;
+        } else if (Array.isArray(battleData.Battle)) {
+            clanEntries = battleData.Battle;
+        } else if (Array.isArray(battleData.Clans)) {
+            clanEntries = battleData.Clans;
+        } else {
+            // unknown structure — show raw keys so we can handle it
+            throw new Error(`Unexpected response shape. Keys: ${Object.keys(battleData).join(', ')}`);
+        }
+
+        const clanNames = clanEntries
+            .map(e => e.Name || e.ClanName || e.name)
+            .filter(Boolean);
+
+        if (!clanNames.length) throw new Error('No clans found in active battle');
+
+        // Update war name with current date
+        if (!state.war.name) {
+            const today = new Date();
+            state.war.name = `War – ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        }
+
+        let done = 0;
+        for (const name of clanNames) {
+            setImportStatus(`Importing ${done + 1}/${clanNames.length}: ${name}…`, 'loading');
+            await importClanByName(name);
+            done++;
+        }
+
+        save();
+        renderManage();
+        renderDashboard();
+        setImportStatus(`✅ Imported ${done} clans from the active battle!`, 'success');
+        toast(`Loaded ${done} clans from active battle`, 'success');
+
+    } catch (err) {
+        setImportStatus(`❌ ${err.message}`, 'error');
+        toast(err.message, 'error');
+    } finally {
+        setLiveBtnsDisabled(false);
+    }
+}
+
+async function fetchSingleClan() {
+    const input = document.getElementById('fetch-clan-name');
+    const name  = (input?.value || '').trim();
+    if (!name) { toast('Enter a clan name', 'error'); return; }
+
+    setLiveBtnsDisabled(true);
+    try {
+        const imported = await importClanByName(name);
+        input.value = '';
+        renderManage();
+        renderDashboard();
+        setImportStatus(`✅ "${imported}" imported successfully!`, 'success');
+        toast(`"${imported}" imported`, 'success');
+    } catch (err) {
+        setImportStatus(`❌ ${err.message}`, 'error');
+        toast(err.message, 'error');
+    } finally {
+        setLiveBtnsDisabled(false);
+    }
+}
+
+async function refreshClan(clanId) {
+    const clan = getClan(clanId);
+    if (!clan) return;
+    try {
+        await importClanByName(clan.name);
+        renderDashboard();
+        if (ui.currentClanId === clanId) renderClanDetail();
+        toast(`"${clan.name}" refreshed`, 'success');
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // ── Event Listeners ────────────────────────
 
 // Nav
@@ -625,6 +833,13 @@ document.getElementById('add-clan-form').addEventListener('submit', e => {
 
 // Compare button
 document.getElementById('do-compare-btn').addEventListener('click', doCompare);
+
+// Live data buttons
+document.getElementById('fetch-active-battle-btn')?.addEventListener('click', fetchActiveBattle);
+document.getElementById('fetch-clan-btn')?.addEventListener('click', fetchSingleClan);
+document.getElementById('fetch-clan-name')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') fetchSingleClan();
+});
 
 // ── Bootstrap ──────────────────────────────
 load();
