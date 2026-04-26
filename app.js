@@ -244,6 +244,7 @@ function renderPlayersTable(clan) {
     const search   = (document.getElementById('player-search').value || '').toLowerCase();
     const sortMode = document.getElementById('sort-select').value;
     const total    = clanTotal(clan);
+    const avg      = clan.players.length ? total / clan.players.length : 0;
 
     let players = [...clan.players];
 
@@ -265,7 +266,7 @@ function renderPlayersTable(clan) {
         tbody.innerHTML = `
           <tr>
             <td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">
-              ${search ? 'No players match your search.' : 'No players yet — click <strong>+ Add Player</strong>.'}
+              ${search ? 'No players match your search.' : 'No players yet.'}
             </td>
           </tr>`;
         return;
@@ -274,6 +275,10 @@ function renderPlayersTable(clan) {
     tbody.innerHTML = players.map((p, idx) => {
         const pct      = total > 0 ? ((p.points / total) * 100).toFixed(1) : '0.0';
         const barWidth = total > 0 ? Math.round((p.points / total) * 100) : 0;
+        const diff     = avg > 0 ? p.points - avg : 0;
+        const diffPct  = avg > 0 ? ((diff / avg) * 100).toFixed(1) : null;
+        const vsClass  = diff > 0 ? 'vs-above' : diff < 0 ? 'vs-below' : 'vs-equal';
+        const vsText   = diffPct !== null ? (diff >= 0 ? '+' : '') + diffPct + '%' : '—';
         return `
           <tr>
             <td class="player-rank">${idx + 1}</td>
@@ -288,12 +293,7 @@ function renderPlayersTable(clan) {
                 <div class="mini-bar-fill" style="width:${barWidth}%;background:${clan.color}"></div>
               </div>
             </td>
-            <td>
-              <div class="action-btns">
-                <button class="btn-icon" onclick="openEditPlayer('${p.id}')" title="Edit">✏️</button>
-                <button class="btn-icon del" onclick="deletePlayer('${p.id}')" title="Delete">🗑️</button>
-              </div>
-            </td>
+            <td class="player-vsavg ${vsClass}">${vsText}</td>
           </tr>`;
     }).join('');
 }
@@ -310,41 +310,9 @@ function openAddPlayer() {
     document.getElementById('player-username').focus();
 }
 
-function openEditPlayer(playerId) {
-    const clan   = getClan(ui.currentClanId);
-    const player = clan?.players.find(p => p.id === playerId);
-    if (!player) return;
-
-    ui.editingPlayerId = playerId;
-    document.getElementById('modal-title').textContent  = 'Edit Player';
-    document.getElementById('modal-submit').textContent = 'Save Changes';
-    document.getElementById('player-username').value    = player.username;
-    document.getElementById('player-points').value      = player.points;
-    document.getElementById('player-role').value        = player.role || 'Member';
-    document.getElementById('modal-overlay').classList.add('active');
-    document.getElementById('player-username').focus();
-}
-
 function closeModal() {
     document.getElementById('modal-overlay').classList.remove('active');
     ui.editingPlayerId = null;
-}
-
-function deletePlayer(playerId) {
-    const clan   = getClan(ui.currentClanId);
-    const player = clan?.players.find(p => p.id === playerId);
-    if (!player) return;
-
-    confirm(
-        'Remove Player',
-        `Remove "${player.username}" from ${clan.name}?`,
-        () => {
-            clan.players = clan.players.filter(p => p.id !== playerId);
-            save();
-            renderClanDetail();
-            toast(`${player.username} removed`);
-        }
-    );
 }
 
 // ── Compare ────────────────────────────────
@@ -569,26 +537,46 @@ async function apiFetch(path) {
 async function resolveUsernames(userIds) {
     if (!userIds.length) return {};
     const map = {};
-    try {
-        // batch up to 100 at a time
-        for (let i = 0; i < userIds.length; i += 100) {
-            const batch = userIds.slice(i, i + 100);
-            const res = await fetch('https://users.roblox.com/v1/users', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userIds: batch, excludeBannedUsers: false }),
+    const ROBLOX_URL = 'https://users.roblox.com/v1/users';
+
+    for (let i = 0; i < userIds.length; i += 100) {
+        const batch = userIds.slice(i, i + 100)
+            .map(id => Number(id))
+            .filter(id => id > 0);
+        if (!batch.length) continue;
+
+        const body    = JSON.stringify({ userIds: batch, excludeBannedUsers: false });
+        const headers = { 'Content-Type': 'application/json' };
+
+        let parsed = null;
+
+        // 1. Try direct (works if Roblox allows the origin)
+        try {
+            const res = await fetch(ROBLOX_URL, {
+                method: 'POST', headers, body,
                 signal: AbortSignal.timeout(8000),
             });
-            if (res.ok) {
-                const data = await res.json();
-                // Store under both number and string keys for safe lookup
-                (data.data || []).forEach(u => {
-                    map[u.id]          = u.name;
-                    map[String(u.id)]  = u.name;
+            if (res.ok) parsed = await res.json();
+        } catch (_) {}
+
+        // 2. Fallback via CORS proxy
+        if (!parsed) {
+            try {
+                const res = await fetch(`${CORS_PROXY}${encodeURIComponent(ROBLOX_URL)}`, {
+                    method: 'POST', headers, body,
+                    signal: AbortSignal.timeout(12000),
                 });
-            }
+                if (res.ok) parsed = await res.json();
+            } catch (_) {}
         }
-    } catch { /* usernames stay as ID fallbacks */ }
+
+        if (parsed) {
+            (parsed.data || []).forEach(u => {
+                map[u.id]         = u.name;
+                map[String(u.id)] = u.name;
+            });
+        }
+    }
     return map;
 }
 
@@ -607,40 +595,54 @@ async function importClanByName(clanName, battleTotal = 0) {
 
     const clanData = raw.data;
 
-    // Use current battle ID (e.g. "StarryBattle") as the contribution key
-    const battleId  = state.war.battleId || '';
-    const contrib   = clanData.Contribution || {};
+    // Contribution key auto-discovery:
+    // 1. Try stored battleId first (e.g. "StarryBattle")
+    // 2. Fall back to whichever key has the most entries — that's the active battle
+    const battleId = state.war.battleId || '';
+    const contrib  = clanData.Contribution || {};
 
-    // Try battle-specific key first, then common fallbacks
-    const battleArr = contrib[battleId] || contrib.Battle || contrib.battle || contrib.Current || [];
+    let battleArr = Array.isArray(contrib[battleId]) ? contrib[battleId] : [];
+    if (!battleArr.length) {
+        const bestKey = Object.keys(contrib)
+            .filter(k => Array.isArray(contrib[k]) && contrib[k].length > 0)
+            .sort((a, b) => contrib[b].length - contrib[a].length)[0];
+        if (bestKey) {
+            battleArr = contrib[bestKey];
+            // Cache the discovered key so future imports reuse it
+            if (!state.war.battleId) state.war.battleId = bestKey;
+        }
+    }
 
     const battlePoints = {};
     battleArr.forEach(c => {
         const id  = String(c.UserID ?? c.userId ?? c.id ?? '');
         const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? 0;
-        if (id) battlePoints[id] = pts;
+        if (id && id !== '0') battlePoints[id] = pts;
     });
 
     let members = clanData.Members || clanData.members || [];
 
     // Owner is sometimes not in the Members array — add them if missing
     const ownerID = clanData.Owner ?? clanData.owner;
-    if (ownerID) {
-        const alreadyIn = members.some(m => (m.UserID ?? m.userId ?? m.id) == ownerID);
+    if (ownerID && Number(ownerID) > 0) {
+        const alreadyIn = members.some(m => String(m.UserID ?? m.userId ?? m.id) === String(ownerID));
         if (!alreadyIn) {
             members = [{ UserID: ownerID, PermissionLevel: 255 }, ...members];
         }
     }
 
-    // Filter out entries with no valid ID (but keep UserID=0 just in case)
-    const allIds = members
-        .map(m => m.UserID ?? m.userId ?? m.id)
-        .filter(id => id !== null && id !== undefined && id !== '');
+    // Only keep members with a valid numeric UserID > 0
+    const validMembers = members.filter(m => {
+        const id = Number(m.UserID ?? m.userId ?? m.id);
+        return id > 0;
+    });
+
+    const allIds = validMembers.map(m => m.UserID ?? m.userId ?? m.id);
 
     setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…`, 'loading');
     const usernameMap = await resolveUsernames(allIds);
 
-    const players = members.map(m => {
+    const players = validMembers.map(m => {
         const memberId = m.UserID ?? m.userId ?? m.id;
         return {
             id:       uid(),
@@ -783,9 +785,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 // Back button
 document.getElementById('back-btn').addEventListener('click', () => switchView('dashboard'));
 
-// Add player button
-document.getElementById('add-player-btn').addEventListener('click', openAddPlayer);
-
 // Player search & sort (live filter)
 document.getElementById('player-search').addEventListener('input', () => {
     const clan = getClan(ui.currentClanId);
@@ -796,7 +795,7 @@ document.getElementById('sort-select').addEventListener('change', () => {
     if (clan) renderPlayersTable(clan);
 });
 
-// Player form submit
+// Player form submit (add only)
 document.getElementById('player-form').addEventListener('submit', e => {
     e.preventDefault();
 
@@ -809,14 +808,8 @@ document.getElementById('player-form').addEventListener('submit', e => {
     const clan = getClan(ui.currentClanId);
     if (!clan) return;
 
-    if (ui.editingPlayerId) {
-        const player = clan.players.find(p => p.id === ui.editingPlayerId);
-        if (player) { player.username = username; player.points = points; player.role = role; }
-        toast('Player updated');
-    } else {
-        clan.players.push({ id: uid(), username, points, role });
-        toast('Player added');
-    }
+    clan.players.push({ id: uid(), username, points, role });
+    toast('Player added');
 
     save();
     closeModal();
