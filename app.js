@@ -284,6 +284,25 @@ function renderClanDetail() {
         ? `+${fmt(delta)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
         : '—';
 
+    // Clan delta last 5 minutes (snapshot closest to 5m ago, within 2–10 min window)
+    const detailNow     = Date.now();
+    const detailSnaps   = clan.snapshots || [];
+    const target5m      = detailNow - 5 * 60_000;
+    const snap5mClan    = detailSnaps
+        .filter(s => s.ts <= detailNow - 2 * 60_000 && s.ts >= detailNow - 10 * 60_000)
+        .sort((a, b) => Math.abs(a.ts - target5m) - Math.abs(b.ts - target5m))[0] || null;
+    let delta5m = null;
+    if (snap5mClan && clan.players.length) {
+        delta5m = clan.players.reduce((sum, p) => {
+            const prev = snap5mClan.pts?.[p.userId] ?? null;
+            return sum + (prev !== null ? Math.max(0, p.points - prev) : 0);
+        }, 0);
+    }
+    const snap5mAgeMin = snap5mClan ? Math.round((detailNow - snap5mClan.ts) / 60000) : null;
+    const delta5mText  = delta5m !== null
+        ? `+${fmt(delta5m)}${snap5mAgeMin !== null ? ' (' + snap5mAgeMin + 'm)' : ''}`
+        : '—';
+
     // Header
     document.getElementById('clan-detail-color-bar').style.background = clan.color;
     document.getElementById('clan-detail-name').textContent = clan.name;
@@ -293,6 +312,7 @@ function renderClanDetail() {
     document.getElementById('clan-detail-rank').textContent    = `#${rank}`;
     document.getElementById('clan-detail-avg').textContent     = fmt(avgHr) + '/hr';
     document.getElementById('clan-detail-delta').textContent   = deltaText;
+    document.getElementById('clan-detail-delta5m').textContent = delta5mText;
 
     renderPlayersTable(clan);
 }
@@ -345,6 +365,14 @@ function renderPlayersTable(clan) {
         ? (snapAgeMin >= 60 ? `${Math.round(snapAgeMin / 60)}hr` : `${snapAgeMin}m`) + ' ago'
         : '';
 
+    // Snapshot closest to 5 minutes ago (within 2–10 min window)
+    const snapshots  = clan.snapshots || [];
+    const t5m        = now - 5 * 60_000;
+    const snap5m     = snapshots
+        .filter(s => s.ts <= now - 2 * 60_000 && s.ts >= now - 10 * 60_000)
+        .sort((a, b) => Math.abs(a.ts - t5m) - Math.abs(b.ts - t5m))[0] || null;
+    const snap5mAge  = snap5m ? Math.round((now - snap5m.ts) / 60000) : null;
+
     tbody.innerHTML = players.map((p, idx) => {
         const ptsPerHr = p.points / hours;
 
@@ -352,11 +380,18 @@ function renderPlayersTable(clan) {
         const prevPts = snap?.pts?.[p.userId] ?? null;
         const delta1h = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
 
+        // Points gained in last ~5 minutes
+        const prev5mPts = snap5m?.pts?.[p.userId] ?? null;
+        const delta5m   = prev5mPts !== null ? Math.max(0, p.points - prev5mPts) : null;
+
         const avgHrText   = fmt(Math.round(ptsPerHr)) + '/hr';
         const delta1hText = delta1h !== null
             ? `+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
             : null;
-        const subLine = [avgHrText, delta1hText].filter(Boolean).join('  ·  ');
+        const delta5mText = delta5m !== null
+            ? `+${fmt(delta5m)}${snap5mAge !== null ? ' (' + snap5mAge + 'm)' : ''}`
+            : null;
+        const subLine = [avgHrText, delta1hText, delta5mText].filter(Boolean).join('  ·  ');
 
         return `
           <tr>

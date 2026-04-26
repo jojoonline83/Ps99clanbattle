@@ -190,7 +190,7 @@ main {
 .clan-points       { font-size: 26px; font-weight: 900; color: var(--clan-color, var(--accent)); margin-bottom: 8px; }
 
 .clan-card-rates { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-.card-rate  { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.card-rate  { font-size: 12px; font-weight: 700; color: var(--text-primary); }
 .card-delta { font-size: 12px; font-weight: 700; color: var(--success); }
 
 .progress-bar {
