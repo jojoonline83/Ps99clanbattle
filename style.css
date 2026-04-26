@@ -187,7 +187,11 @@ main {
 .rank-other { background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); }
 
 .clan-points-label { font-size: 10px; text-transform: uppercase; letter-spacing: .7px; color: var(--text-muted); margin-bottom: 4px; }
-.clan-points       { font-size: 26px; font-weight: 900; color: var(--clan-color, var(--accent)); margin-bottom: 12px; }
+.clan-points       { font-size: 26px; font-weight: 900; color: var(--clan-color, var(--accent)); margin-bottom: 8px; }
+
+.clan-card-rates { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.card-rate  { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.card-delta { font-size: 12px; font-weight: 700; color: var(--success); }
 
 .progress-bar {
     height: 6px;
@@ -364,11 +368,16 @@ main {
 .mini-bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
 
 .player-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 3px;
     font-size: 11px;
-    color: var(--success);
-    margin-top: 2px;
     font-weight: 600;
 }
+.sub-avg   { color: var(--text-secondary); }
+.sub-delta { color: var(--success); }
+.sub-5m    { color: #f59e0b; }
 
 /* ── Compare View ── */
 .view-title { font-size: 22px; font-weight: 800; margin-bottom: 24px; }

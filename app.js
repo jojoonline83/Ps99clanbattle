@@ -4,10 +4,16 @@
 
 'use strict';
 
+// Change tab title so we can confirm which JS version is running
+document.title = 'PS99 Battle Tracker [v29]';
+
 // ── Constants ──────────────────────────────
 const STORAGE_KEY = 'ps99_tracker_v1';
 const API_BASE    = 'https://biggamesapi.io/api';
-const CORS_PROXY  = 'https://corsproxy.io/?url=';
+const CORS_PROXIES = [
+    'https://corsproxy.io/?url=',
+    'https://api.allorigins.win/raw?url=',
+];
 
 const PALETTE = [
     '#6366f1', // indigo
@@ -192,11 +198,34 @@ function renderDashboard() {
     grid.className = 'clans-grid';
     const maxPts = clanTotal(ranked[0]) || 1;
 
+    const dashNow = Date.now();
+    let dashHours = warHoursElapsed();
+
     grid.innerHTML = ranked.map((clan, idx) => {
         const total     = clanTotal(clan);
         const pct       = Math.round((total / maxPts) * 100);
         const rankClass = idx === 0 ? 'rank-1' : idx === 1 ? 'rank-2' : idx === 2 ? 'rank-3' : 'rank-other';
         const topPlayer = [...clan.players].sort((a, b) => b.points - a.points)[0];
+
+        // Avg/hr
+        let hrs = dashHours;
+        if (hrs === 0) {
+            const snaps  = clan.snapshots || [];
+            const oldest = snaps.length ? Math.min(...snaps.map(s => s.ts)) : dashNow;
+            hrs = Math.max(1, (dashNow - oldest) / 3_600_000);
+        }
+        const avgHrCard = fmt(Math.round(total / hrs)) + '/hr';
+
+        // Delta since last refresh
+        const prevSnap = clan.prevSnapshot || null;
+        let cardDelta = null;
+        if (prevSnap && clan.players.length) {
+            cardDelta = clan.players.reduce((sum, p) => {
+                const prev = prevSnap.pts?.[p.userId] ?? null;
+                return sum + (prev !== null ? Math.max(0, p.points - prev) : 0);
+            }, 0);
+        }
+        const cardDeltaText = cardDelta !== null ? `+${fmt(cardDelta)} since refresh` : '';
 
         return `
           <div class="clan-card" style="--clan-color:${clan.color}"
@@ -210,6 +239,10 @@ function renderDashboard() {
             </div>
             <div class="clan-points-label">Total Points</div>
             <div class="clan-points">${fmt(total)}</div>
+            <div class="clan-card-rates">
+              <span class="card-rate">${avgHrCard}</span>
+              ${cardDeltaText ? `<span class="card-delta">${cardDeltaText}</span>` : ''}
+            </div>
             <div class="progress-bar">
               <div class="progress-fill" style="width:${pct}%;background:${clan.color}"></div>
             </div>
@@ -230,16 +263,70 @@ function renderClanDetail() {
     const ranked = sortedClans();
     const rank   = ranked.findIndex(c => c.id === clan.id) + 1;
     const total  = clanTotal(clan);
-    const avg    = clan.players.length ? Math.round(total / clan.players.length) : 0;
+
+    // Clan avg/hr
+    let hours = warHoursElapsed();
+    if (hours === 0) {
+        const snaps  = clan.snapshots || [];
+        const oldest = snaps.length ? Math.min(...snaps.map(s => s.ts)) : Date.now();
+        hours = Math.max(1, (Date.now() - oldest) / 3_600_000);
+    }
+    const avgHr = Math.round(total / hours);
+
+    // Clan delta since last refresh
+    const prevSnap = clan.prevSnapshot || null;
+    let delta = null;
+    if (prevSnap && clan.players.length) {
+        delta = clan.players.reduce((sum, p) => {
+            const prev = prevSnap.pts?.[p.userId] ?? null;
+            return sum + (prev !== null ? Math.max(0, p.points - prev) : 0);
+        }, 0);
+    }
+    const snapAgeMin = prevSnap ? Math.round((Date.now() - prevSnap.ts) / 60000) : null;
+    const ageLabel   = snapAgeMin !== null
+        ? (snapAgeMin >= 60 ? `${Math.round(snapAgeMin / 60)}hr` : `${snapAgeMin}m`) + ' ago'
+        : '';
+    const deltaText  = delta !== null
+        ? `+${fmt(delta)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
+        : '—';
+
+    // Clan pts/5min: project from since-refresh rate if available, else from avg/hr
+    const detailSnapAge = prevSnap ? Math.max(1, Math.round((Date.now() - prevSnap.ts) / 60000)) : null;
+    let clan5min;
+    if (delta !== null && detailSnapAge > 0) {
+        clan5min = Math.round(delta / detailSnapAge * 5);
+    } else {
+        clan5min = Math.round(avgHr / 12);
+    }
+    const delta5mText = fmt(clan5min) + '/5m';
+
+    // DC count for header (only when snapshot is 90s–4min old)
+    const headerSnapAgeSec = prevSnap ? Math.round((Date.now() - prevSnap.ts) / 1000) : null;
+    const canShowDC        = headerSnapAgeSec !== null && headerSnapAgeSec >= 90 && headerSnapAgeSec <= 240;
+    const dcCount          = canShowDC
+        ? clan.players.filter(p => {
+            const prev = prevSnap.pts?.[p.userId];
+            return prev !== undefined && p.points - prev === 0;
+          }).length
+        : 0;
+    const playersDisplay = dcCount > 0 ? `${clan.players.length} (${dcCount} 💤)` : `${clan.players.length}`;
 
     // Header
+    const setEl = (id, val, color) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = val;
+        if (color) el.style.color = color;
+    };
     document.getElementById('clan-detail-color-bar').style.background = clan.color;
-    document.getElementById('clan-detail-name').textContent = clan.name;
-    document.getElementById('clan-detail-tag').textContent  = clan.tag || '';
-    document.getElementById('clan-detail-points').textContent  = fmt(total);
-    document.getElementById('clan-detail-players').textContent = clan.players.length;
-    document.getElementById('clan-detail-rank').textContent    = `#${rank}`;
-    document.getElementById('clan-detail-avg').textContent     = fmt(avg);
+    setEl('clan-detail-name',    clan.name);
+    setEl('clan-detail-tag',     clan.tag || '');
+    setEl('clan-detail-points',  fmt(total));
+    setEl('clan-detail-players', playersDisplay);
+    setEl('clan-detail-rank',    `#${rank}`);
+    setEl('clan-detail-avg',     fmt(avgHr) + '/hr',  '#f59e0b');
+    setEl('clan-detail-delta',   deltaText,            '#10b981');
+    setEl('clan-detail-delta5m', delta5mText,          '#22d3ee');
 
     renderPlayersTable(clan);
 }
@@ -275,36 +362,60 @@ function renderPlayersTable(clan) {
         return;
     }
 
-    const hours = warHoursElapsed();
+    const now  = Date.now();
 
-    // Find snapshot closest to 1 hour ago for the Last 1Hr column
-    const now      = Date.now();
-    const hrAgo    = now - 3_600_000;
-    const snapshots = clan.snapshots || [];
-    // Best snapshot: taken at or before 1hr ago, most recent of those
-    const snap = snapshots
-        .filter(s => s.ts <= hrAgo)
-        .sort((a, b) => b.ts - a.ts)[0] || null;
+    // Hours elapsed: prefer war startDate, fall back to oldest clan snapshot
+    let hours = warHoursElapsed();
+    if (hours === 0) {
+        const snaps = clan.snapshots || [];
+        const oldest = snaps.length ? Math.min(...snaps.map(s => s.ts)) : now;
+        hours = Math.max(1, (now - oldest) / 3_600_000);
+    }
+
+    // Use previous refresh snapshot for delta (available after 2nd import)
+    const snap = clan.prevSnapshot || null;
+    const snapAgeMin = snap ? Math.max(1, Math.round((now - snap.ts) / 60000)) : null;
+    const ageLabel   = snapAgeMin !== null
+        ? (snapAgeMin >= 60 ? `${Math.round(snapAgeMin / 60)}hr` : `${snapAgeMin}m`) + ' ago'
+        : '';
 
     tbody.innerHTML = players.map((p, idx) => {
-        const ptsPerHr = hours > 1 ? p.points / hours : 0;
+        const ptsPerHr = p.points / hours;
 
-        // Points gained since ~1hr ago snapshot
-        const prevPts  = snap?.pts?.[p.userId] ?? null;
-        const delta1h  = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
+        // Points gained since previous refresh
+        const prevPts = snap?.pts?.[p.userId] ?? null;
+        const delta1h = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
 
-        const avgHrText  = hours > 1 ? fmt(Math.round(ptsPerHr)) + '/hr' : null;
-        const delta1hText = delta1h !== null ? '+' + fmt(delta1h) + ' last hr' : null;
-        const subLine    = [avgHrText, delta1hText].filter(Boolean).join('  ·  ');
+        // Pts/5min: project from since-refresh rate if available, else from avg/hr
+        let pts5min;
+        if (delta1h !== null && snapAgeMin > 0) {
+            pts5min = Math.round(delta1h / snapAgeMin * 5);
+        } else {
+            pts5min = Math.round(ptsPerHr / 12);
+        }
+
+        // Disconnect detection: snapshot 90s–4min old + 0 points gained = likely DC
+        const snapAgeSec = snap ? Math.round((now - snap.ts) / 1000) : null;
+        const isDC       = snapAgeSec !== null && snapAgeSec >= 90 && snapAgeSec <= 240 && delta1h === 0;
+
+        const SEP = `<span style="color:#6b7280;margin:0 5px">·</span>`;
+        const avgSpan   = `<span style="color:#f59e0b;font-size:12px;font-weight:700">${fmt(Math.round(ptsPerHr))}/hr</span>`;
+        const deltaSpan = delta1h !== null
+            ? `${SEP}<span style="color:#10b981;font-size:12px;font-weight:700">+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}</span>`
+            : '';
+        const pts5Span  = `${SEP}<span style="color:#22d3ee;font-size:12px;font-weight:700">${fmt(pts5min)}/5m</span>`;
+        const dcBadge   = isDC
+            ? `<span style="color:#ef4444;font-size:10px;font-weight:700;background:rgba(239,68,68,.15);padding:1px 5px;border-radius:3px;margin-left:6px">💤 DC?</span>`
+            : '';
 
         return `
-          <tr>
+          <tr${isDC ? ' style="opacity:.65"' : ''}>
             <td class="player-rank">${idx + 1}</td>
             <td class="player-name">
-              <div>${esc(p.username)} <span class="role-badge ${getRoleClass(p.role)}">${esc(p.role || 'Member')}</span></div>
-              ${subLine ? `<div class="player-sub">${esc(subLine)}</div>` : ''}
+              <div>${esc(p.username)} <span class="role-badge ${getRoleClass(p.role)}">${esc(p.role || 'Member')}</span>${dcBadge}</div>
+              <div class="player-sub">${avgSpan}${deltaSpan}${pts5Span}</div>
             </td>
-            <td class="player-points" style="color:${clan.color}">${fmt(p.points)}</td>
+            <td class="player-points" style="color:${isDC ? '#ef4444' : clan.color}">${fmt(p.points)}</td>
           </tr>`;
     }).join('');
 }
@@ -530,18 +641,25 @@ function setLiveBtnsDisabled(disabled) {
 
 async function apiFetch(path) {
     const url = `${API_BASE}${path}`;
-    // Try direct first, then CORS proxy
+    // Returns true if the parsed JSON looks like real API data (not a proxy error wrapper)
+    const isValid = d => d && typeof d === 'object' && !d.error && !d.Error
+        && !(typeof d.message === 'string' && d.message.toLowerCase().includes('timeout'));
+
+    // 1. Try direct
     try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!res.ok) throw new Error('not ok');
-        return await res.json();
-    } catch {
-        const proxyRes = await fetch(CORS_PROXY + encodeURIComponent(url), {
-            signal: AbortSignal.timeout(12000)
-        });
-        if (!proxyRes.ok) throw new Error(`API error: ${proxyRes.status}`);
-        return await proxyRes.json();
+        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (res.ok) { const d = await res.json(); if (isValid(d)) return d; }
+    } catch (_) {}
+    // 2. Try each CORS proxy in order
+    for (const proxy of CORS_PROXIES) {
+        try {
+            const res = await fetch(proxy + encodeURIComponent(url), {
+                signal: AbortSignal.timeout(20000)
+            });
+            if (res.ok) { const d = await res.json(); if (isValid(d)) return d; }
+        } catch (_) {}
     }
+    throw new Error('API unavailable – check connection or try again later');
 }
 
 // Resolve Roblox UserIDs → usernames in batches of 100
@@ -570,10 +688,11 @@ async function resolveUsernames(userIds) {
             if (res.ok) parsed = await res.json();
         } catch (_) {}
 
-        // 2. Fallback via CORS proxy
-        if (!parsed) {
+        // 2. Fallback via each CORS proxy
+        for (const proxy of CORS_PROXIES) {
+            if (parsed) break;
             try {
-                const res = await fetch(`${CORS_PROXY}${encodeURIComponent(ROBLOX_URL)}`, {
+                const res = await fetch(`${proxy}${encodeURIComponent(ROBLOX_URL)}`, {
                     method: 'POST', headers, body,
                     signal: AbortSignal.timeout(12000),
                 });
@@ -695,16 +814,21 @@ async function importClanByName(clanName, battleTotal = 0) {
     const playerSum     = players.reduce((s, p) => s + p.points, 0);
     const resolvedTotal = Math.max(playerSum, battleTotal);
 
-    // Snapshot: record current points by userId so we can compute last-1hr delta
+    // Snapshot: record current points by userId so we can compute delta on next refresh
     const now      = Date.now();
     const snapshot = { ts: now, pts: {} };
     players.forEach(p => { snapshot.pts[p.userId] = p.points; });
 
     const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
     if (existing) {
+        // Capture the most recent previous snapshot BEFORE adding the new one
+        const prevSnap = existing.snapshots?.length
+            ? existing.snapshots[existing.snapshots.length - 1]
+            : null;
+        existing.prevSnapshot = prevSnap;
+
         if (!existing.snapshots) existing.snapshots = [];
         existing.snapshots.push(snapshot);
-        // Keep only the last 25 hours of snapshots
         existing.snapshots = existing.snapshots.filter(s => now - s.ts < 25 * 3_600_000);
         existing.players     = players;
         existing.battleTotal = resolvedTotal;
@@ -714,7 +838,7 @@ async function importClanByName(clanName, battleTotal = 0) {
         state.clans.push({
             id: uid(), name: clanData.Name || clanName,
             tag: '', color, players, battleTotal: resolvedTotal,
-            snapshots: [snapshot],
+            snapshots: [snapshot], prevSnapshot: null,
         });
     }
 
@@ -729,19 +853,28 @@ async function loadBattleData({ silent = false } = {}) {
     if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = '⏳ Loading…'; }
 
     try {
-        // 1. Battle config → name + dates only
-        const battleCfg = await apiFetch('/activeClanBattle');
-        const cfgData   = battleCfg?.data?.configData || {};
+        // 1. Battle config → optional, don't fail if missing
+        let cfgData = {};
+        try {
+            const battleCfg = await apiFetch('/activeClanBattle');
+            cfgData = battleCfg?.data?.configData || battleCfg?.data || {};
+        } catch (_) {}
         const startTime = cfgData.StartTime  ? new Date(cfgData.StartTime  * 1000) : null;
         const endTime   = cfgData.FinishTime ? new Date(cfgData.FinishTime * 1000) : null;
 
-        // 2. Top clans sorted by Points — fetch enough pages to cover the full battle
+        // 2. Top clans — page2 is optional; normalise response to flat array
+        const toArr = d => Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : []);
         const page1 = await apiFetch('/clans?page=1&pageSize=100&sort=Points&sortOrder=desc');
-        const page2 = await apiFetch('/clans?page=2&pageSize=100&sort=Points&sortOrder=desc');
-        const clanList = [...(page1?.data || []), ...(page2?.data || [])];
+        let page2data = [];
+        try {
+            const p2 = await apiFetch('/clans?page=2&pageSize=100&sort=Points&sortOrder=desc');
+            page2data = toArr(p2?.data);
+        } catch (_) {}
+        const clanList = [...toArr(page1?.data), ...page2data];
         if (!clanList.length) throw new Error('No clan data returned');
 
-        // 3. Rebuild state
+        // 3. Rebuild state — preserve existing clan snapshots/players
+        const oldClans        = state.clans;
         state.clans           = [];
         state.nextColorIdx    = 0;
         state.war.name        = cfgData.Title || 'PS99 Clan Battle';
@@ -753,12 +886,18 @@ async function loadBattleData({ silent = false } = {}) {
         clanList.forEach((entry, idx) => {
             const name   = entry.Name || entry.name || `Clan_${idx}`;
             const points = entry.Points || entry.points || 0;
-            const color  = PALETTE[state.nextColorIdx % PALETTE.length];
-            state.nextColorIdx++;
+            const old    = oldClans.find(c => c.name.toLowerCase() === name.toLowerCase());
+            const color  = old?.color || PALETTE[state.nextColorIdx % PALETTE.length];
+            if (!old) state.nextColorIdx++;
             state.clans.push({
-                id: uid(), name, tag: '', color,
-                battleTotal: points,
-                players: [],   // loaded lazily on drill-down
+                id:           old?.id           || uid(),
+                name,
+                tag:          old?.tag          || '',
+                color,
+                battleTotal:  points,
+                players:      old?.players      || [],
+                snapshots:    old?.snapshots    || [],
+                prevSnapshot: old?.prevSnapshot || null,
             });
         });
 
@@ -818,6 +957,46 @@ async function refreshClan(clanId) {
     } catch (err) {
         toast(err.message, 'error');
     }
+}
+
+// Fast refresh: update points only (no username re-resolution) — used by auto-refresh
+async function fastRefreshClan(clanId) {
+    const clan = getClan(clanId);
+    if (!clan || !clan.players.length) return;
+
+    const raw = await apiFetch(`/clan/${encodeURIComponent(clan.name)}`);
+    if (raw.status !== 'ok' || !raw.data) return;
+
+    const clanData  = raw.data;
+    const battles   = clanData.Battles || {};
+    const lastKey   = Object.keys(battles).pop();
+    const battleObj = (lastKey && battles[lastKey]) || {};
+    const arr       = battleObj.PointContributions || battleObj.pointContributions || [];
+
+    const bpts = {};
+    arr.forEach(c => {
+        const id  = String(c.UserID ?? c.userId ?? c.Id ?? c.ID ?? c.id ?? '');
+        const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? 0;
+        if (id && id !== '0' && id !== 'null') bpts[id] = pts;
+    });
+
+    const now  = Date.now();
+    const snap = { ts: now, pts: {} };
+    clan.players.forEach(p => {
+        const newPts       = bpts[p.userId] ?? bpts[String(Number(p.userId))] ?? p.points;
+        p.points           = newPts;
+        snap.pts[p.userId] = newPts;
+    });
+
+    if (battleObj.Points) clan.battleTotal = Math.max(Number(battleObj.Points), clan.battleTotal || 0);
+
+    const prev = clan.snapshots?.length ? clan.snapshots[clan.snapshots.length - 1] : null;
+    clan.prevSnapshot = prev;
+    if (!clan.snapshots) clan.snapshots = [];
+    clan.snapshots.push(snap);
+    clan.snapshots = clan.snapshots.filter(s => now - s.ts < 25 * 3_600_000);
+
+    save();
 }
 
 // ── Event Listeners ────────────────────────
@@ -934,6 +1113,18 @@ document.getElementById('fetch-clan-name')?.addEventListener('keydown', e => {
 document.getElementById('dashboard-refresh-btn')?.addEventListener('click', () => {
     loadBattleData({ silent: false });
 });
+
+// ── Auto-Refresh ───────────────────────────
+// Every 2 minutes: fast-refresh the current clan (DC detection) + silent dashboard update
+setInterval(async () => {
+    try {
+        if (ui.currentClanId) {
+            await fastRefreshClan(ui.currentClanId);
+            renderClanDetail();
+        }
+    } catch (_) {}
+    try { await loadBattleData({ silent: true }); } catch (_) {}
+}, 120_000);
 
 // ── Bootstrap ──────────────────────────────
 load();
