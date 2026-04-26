@@ -268,7 +268,7 @@ function renderPlayersTable(clan) {
     if (players.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">
+            <td colspan="3" style="text-align:center;padding:40px;color:var(--text-muted)">
               ${search ? 'No players match your search.' : 'No players yet.'}
             </td>
           </tr>`;
@@ -293,16 +293,18 @@ function renderPlayersTable(clan) {
         const prevPts  = snap?.pts?.[p.userId] ?? null;
         const delta1h  = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
 
+        const avgHrText  = hours > 1 ? fmt(Math.round(ptsPerHr)) + '/hr' : null;
+        const delta1hText = delta1h !== null ? '+' + fmt(delta1h) + ' last hr' : null;
+        const subLine    = [avgHrText, delta1hText].filter(Boolean).join('  ·  ');
+
         return `
           <tr>
             <td class="player-rank">${idx + 1}</td>
             <td class="player-name">
-              ${esc(p.username)}
-              <span class="role-badge ${getRoleClass(p.role)}">${esc(p.role || 'Member')}</span>
+              <div>${esc(p.username)} <span class="role-badge ${getRoleClass(p.role)}">${esc(p.role || 'Member')}</span></div>
+              ${subLine ? `<div class="player-sub">${esc(subLine)}</div>` : ''}
             </td>
             <td class="player-points" style="color:${clan.color}">${fmt(p.points)}</td>
-            <td class="player-vsavg">${hours > 1 ? fmt(Math.round(ptsPerHr)) + '/hr' : '—'}</td>
-            <td class="player-1hr">${delta1h !== null ? fmt(delta1h) : '—'}</td>
           </tr>`;
     }).join('');
 }
