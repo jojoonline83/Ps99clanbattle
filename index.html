@@ -8,6 +8,19 @@
     <meta http-equiv="Expires" content="0">
     <title>PS99 Clan Battle Tracker</title>
     <link rel="stylesheet" href="style.css?v=12">
+    <!-- Force reload if a newer version of app.js has been deployed -->
+    <script>
+    (function(){
+        var V = 27;
+        var k = '_ps99v';
+        var stored = localStorage.getItem(k);
+        localStorage.setItem(k, V);
+        if (stored && stored !== String(V)) {
+            var url = location.href.split('?')[0] + '?nocache=' + V;
+            location.replace(url);
+        }
+    })();
+    </script>
 </head>
 <body>
 
@@ -22,6 +35,7 @@
             <button class="nav-btn" data-view="compare">Compare</button>
             <button class="nav-btn" data-view="manage">Manage War</button>
         </nav>
+        <div id="app-version" style="font-size:10px;color:#4b6080;align-self:center">v27</div>
     </div>
 </header>
 
@@ -250,6 +264,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>
