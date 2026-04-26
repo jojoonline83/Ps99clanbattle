@@ -273,7 +273,7 @@ function renderPlayersTable(clan) {
     if (players.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">
+            <td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">
               ${search ? 'No players match your search.' : 'No players yet.'}
             </td>
           </tr>`;
@@ -282,10 +282,24 @@ function renderPlayersTable(clan) {
 
     const hours = warHoursElapsed();
 
+    // Find snapshot closest to 1 hour ago for the Last 1Hr column
+    const now      = Date.now();
+    const hrAgo    = now - 3_600_000;
+    const snapshots = clan.snapshots || [];
+    // Best snapshot: taken at or before 1hr ago, most recent of those
+    const snap = snapshots
+        .filter(s => s.ts <= hrAgo)
+        .sort((a, b) => b.ts - a.ts)[0] || null;
+
     tbody.innerHTML = players.map((p, idx) => {
         const pct      = total > 0 ? ((p.points / total) * 100).toFixed(1) : '0.0';
         const barWidth = total > 0 ? Math.round((p.points / total) * 100) : 0;
-        const ptsPerHr = hours > 0 ? p.points / hours : 0;
+        const ptsPerHr = hours > 1 ? p.points / hours : 0;
+
+        // Points gained since ~1hr ago snapshot
+        const prevPts  = snap?.pts?.[p.userId] ?? null;
+        const delta1h  = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
+
         return `
           <tr>
             <td class="player-rank">${idx + 1}</td>
@@ -301,6 +315,7 @@ function renderPlayersTable(clan) {
               </div>
             </td>
             <td class="player-vsavg">${hours > 1 ? fmt(ptsPerHr) + '/hr' : '—'}</td>
+            <td class="player-1hr">${delta1h !== null ? fmt(delta1h) : '—'}</td>
           </tr>`;
     }).join('');
 }
@@ -684,14 +699,24 @@ async function importClanByName(clanName, battleTotal = 0) {
             username: usernameMap[memberId] || usernameMap[String(memberId)] || `User_${memberId}`,
             points:   battlePoints[String(memberId)] ?? battlePoints[String(Number(memberId))] ?? 0,
             role:     permToRole(m.PermissionLevel ?? m.permissionLevel ?? 0),
+            userId:   String(memberId),
         };
     });
 
     const playerSum     = players.reduce((s, p) => s + p.points, 0);
     const resolvedTotal = Math.max(playerSum, battleTotal);
 
+    // Snapshot: record current points by userId so we can compute last-1hr delta
+    const now      = Date.now();
+    const snapshot = { ts: now, pts: {} };
+    players.forEach(p => { snapshot.pts[p.userId] = p.points; });
+
     const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
     if (existing) {
+        if (!existing.snapshots) existing.snapshots = [];
+        existing.snapshots.push(snapshot);
+        // Keep only the last 25 hours of snapshots
+        existing.snapshots = existing.snapshots.filter(s => now - s.ts < 25 * 3_600_000);
         existing.players     = players;
         existing.battleTotal = resolvedTotal;
     } else {
@@ -700,6 +725,7 @@ async function importClanByName(clanName, battleTotal = 0) {
         state.clans.push({
             id: uid(), name: clanData.Name || clanName,
             tag: '', color, players, battleTotal: resolvedTotal,
+            snapshots: [snapshot],
         });
     }
 

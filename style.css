@@ -370,6 +370,13 @@ main {
     white-space: nowrap;
     color: var(--text-secondary);
 }
+.player-1hr {
+    font-size: 12px;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+    color: var(--success);
+}
 
 /* ── Compare View ── */
 .view-title { font-size: 22px; font-weight: 800; margin-bottom: 24px; }
