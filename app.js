@@ -256,10 +256,9 @@ function renderClanDetail() {
     }
     if (clan._debug) {
         const d = clan._debug;
-        dbgEl.innerHTML = `<b>DEBUG — battles["${esc(d.lastBattleKey)}"] inner keys:</b><br>
-<code style="font-size:10px">${esc(d.innerKeys)}</code><br>
-activeBattleId: <b>${esc(d.activeBattleId)}</b>  usedKey: <b>${esc(d.usedKey)}</b>  entries: <b>${d.entryCount}</b><br>
-usedEntry[0]: <code>${esc(d.usedEntry)}</code>`;
+        dbgEl.innerHTML = `<b>DEBUG — PointContributions</b><br>
+activeBattleId: <b>${esc(d.activeBattleId)}</b>  entries: <b>${d.ptContribLen}</b>  matchedPlayers: <b>${d.bpKeys}</b>  playerSum: <b>${d.playerSum}</b><br>
+sampleEntry: <code>${esc(d.sampleEntry)}</code>`;
         dbgEl.style.display = 'block';
     } else {
         dbgEl.style.display = 'none';
@@ -657,45 +656,31 @@ async function importClanByName(clanName, battleTotal = 0) {
         });
     }
 
-    // Key selection strategy (in priority order):
-    // 1. Stored battleId  2. Last key in Battles (= most recently added = current battle)
-    // 3. All Battles keys  4. Contribution keys — always filtering null UserIDs
-    let usedKey   = '';
-    let battleArr = [];
+    // The current battle data is at battles[lastBattleKey].PointContributions
+    const battleKeys    = Object.keys(battles);
+    const lastBattleKey = battleKeys[battleKeys.length - 1]; // most recently added = current battle
+    const activeBattleId = lastBattleKey || battleId;
+    if (activeBattleId) state.war.battleId = activeBattleId;
 
-    const battleKeys = Object.keys(battles);
-    const lastBattleKey = battleKeys[battleKeys.length - 1]; // e.g. "StarryBattle"
+    // battles[key] is an object with: PointContributions(arr), Points(number), Place(number), etc.
+    const battleObj  = battles[activeBattleId] || battles[battleId] || {};
+    const battleArr  = battleObj.PointContributions || battleObj.pointContributions
+                    || validContrib(contrib[activeBattleId]) || [];
+    const usedKey    = activeBattleId;
 
-    // Update stored battleId to the last Battles key if it's more recent
-    if (lastBattleKey && lastBattleKey !== battleId) {
-        state.war.battleId = lastBattleKey;
-    }
-    const activeBattleId = state.war.battleId || lastBattleKey || battleId;
-
-    for (const key of [activeBattleId, lastBattleKey]) {
-        if (!key) continue;
-        const arr = validContrib(battles[key]) || validContrib(contrib[key]);
-        if (arr.length) { battleArr = arr; usedKey = key; break; }
+    // If the API already gives us the clan's total battle points, use it
+    if (battleObj.Points && battleObj.Points > (battleTotal || 0)) {
+        battleTotal = battleObj.Points;
     }
 
-    if (!battleArr.length) {
-        let bestLen = 0;
-        for (const source of [battles, contrib]) {
-            for (const k of Object.keys(source)) {
-                const arr = validContrib(source[k]);
-                if (arr.length > bestLen) { bestLen = arr.length; battleArr = arr; usedKey = k; }
-            }
-        }
-    }
-
-    console.log('[PS99] activeBattleId:', activeBattleId, '| lastBattleKey:', lastBattleKey, '| usedKey:', usedKey, '| entries:', battleArr.length);
-    if (battleArr.length) console.log('[PS99] sample entry:', JSON.stringify(battleArr[0]));
+    console.log('[PS99] activeBattleId:', activeBattleId, '| PointContributions entries:', battleArr.length);
+    if (battleArr[0]) console.log('[PS99] sample entry:', JSON.stringify(battleArr[0]));
 
     const battlePoints = {};
     battleArr.forEach(c => {
         const id  = String(c.UserID ?? c.userId ?? c.Id ?? c.ID ?? c.id ?? '');
         const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? c.Score ?? c.score ?? 0;
-        if (id && id !== '0') battlePoints[id] = pts;
+        if (id && id !== '0' && id !== 'null') battlePoints[id] = pts;
     });
 
     let members = clanData.Members || clanData.members || [];
@@ -734,19 +719,12 @@ async function importClanByName(clanName, battleTotal = 0) {
     const playerSum = players.reduce((s, p) => s + p.points, 0);
     const resolvedTotal = Math.max(playerSum, battleTotal);
 
-    // Debug info — show all keys inside battles[lastBattleKey] to find where player data lives
-    const lastRaw     = battles[lastBattleKey] || {};
-    const innerKeys   = typeof lastRaw === 'object' && !Array.isArray(lastRaw)
-        ? Object.entries(lastRaw).map(([k, v]) => `${k}(${Array.isArray(v) ? 'arr'+v.length : typeof v})`).join(', ')
-        : (Array.isArray(lastRaw) ? `array[${lastRaw.length}]` : String(lastRaw));
     const _debug = {
         activeBattleId: activeBattleId || '(empty)',
-        lastBattleKey:  lastBattleKey  || '(none)',
-        usedKey:        usedKey        || 'NONE',
-        entryCount:     battleArr.length,
+        ptContribLen:   battleArr.length,
         playerSum,
-        innerKeys,
-        usedEntry:  battleArr[0] ? JSON.stringify(battleArr[0]) : 'none',
+        sampleEntry:    battleArr[0] ? JSON.stringify(battleArr[0]) : 'none',
+        bpKeys:         Object.keys(battlePoints).length,
     };
 
     const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
