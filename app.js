@@ -130,13 +130,25 @@ function showClanDetail(clanId) {
 }
 
 // ── Dashboard ──────────────────────────────
+function renderDashboardLoading() {
+    document.getElementById('current-war-title').textContent = 'PS99 Clan Battle';
+    document.getElementById('current-war-dates').textContent = 'Loading live data…';
+    document.getElementById('war-status-badge').innerHTML    = '<span class="status-pill status-active"><span class="spinner" style="border-top-color:#10b981"></span>Fetching…</span>';
+    document.getElementById('clans-grid').innerHTML = `
+      <div class="skeleton-grid">
+        ${[1,2,3].map(() => '<div class="skeleton-card"><div class="sk sk-title"></div><div class="sk sk-pts"></div><div class="sk sk-bar"></div><div class="sk sk-foot"></div></div>').join('')}
+      </div>`;
+}
+
 function renderDashboard() {
     const { war } = state;
 
     document.getElementById('current-war-title').textContent =
-        war.name || 'No Active War';
+        war.name || 'PS99 Clan Battle';
 
-    let dateStr = '';
+    let dateStr = war.lastFetched
+        ? `Last updated: ${new Date(war.lastFetched).toLocaleTimeString()}`
+        : '';
     if (war.startDate && war.endDate) {
         const s = new Date(war.startDate + 'T00:00:00');
         const e = new Date(war.endDate   + 'T00:00:00');
@@ -146,33 +158,24 @@ function renderDashboard() {
 
     // Status badge
     const badge = document.getElementById('war-status-badge');
-    badge.innerHTML = '';
-    if (war.startDate && war.endDate) {
-        const now   = new Date();
-        const start = new Date(war.startDate + 'T00:00:00');
-        const end   = new Date(war.endDate   + 'T23:59:59');
-        if (now < start) {
-            badge.innerHTML = '<span class="status-pill status-upcoming">Upcoming</span>';
-        } else if (now > end) {
-            badge.innerHTML = '<span class="status-pill status-ended">Ended</span>';
-        } else {
-            badge.innerHTML = '<span class="status-pill status-active">⚡ Active</span>';
-        }
-    }
+    badge.innerHTML = state.clans.length
+        ? '<span class="status-pill status-active">⚡ Live</span>'
+        : '';
 
-    const grid = document.getElementById('clans-grid');
+    const grid   = document.getElementById('clans-grid');
     const ranked = sortedClans();
 
     if (ranked.length === 0) {
         grid.innerHTML = `
           <div class="empty-state" style="grid-column:1/-1">
             <div class="empty-state-icon">⚔️</div>
-            <p>No clans added yet</p>
-            <small>Go to <strong>Manage War</strong> to add clans and track points</small>
+            <p>No active battle found</p>
+            <small>Hit <strong>🔄 Refresh</strong> to try again, or add clans manually in <strong>Manage War</strong></small>
           </div>`;
         return;
     }
 
+    grid.className = 'clans-grid';
     const maxPts = clanTotal(ranked[0]) || 1;
 
     grid.innerHTML = ranked.map((clan, idx) => {
@@ -198,7 +201,7 @@ function renderDashboard() {
             </div>
             <div class="clan-card-footer">
               <span>${clan.players.length} player${clan.players.length !== 1 ? 's' : ''}</span>
-              <span>${topPlayer ? '🏆 ' + esc(topPlayer.username) : 'Click to manage'}</span>
+              <span>${topPlayer ? '🏆 ' + esc(topPlayer.username) : 'Click to view'}</span>
             </div>
             <button class="clan-refresh-btn" onclick="event.stopPropagation();refreshClan('${clan.id}')" title="Refresh from API">🔄</button>
           </div>`;
@@ -632,57 +635,58 @@ async function importClanByName(clanName) {
     return clan.Name || clanName;
 }
 
-async function fetchActiveBattle() {
-    setLiveBtnsDisabled(true);
-    try {
-        setImportStatus('Fetching active clan battle…', 'loading');
+async function loadBattleData({ silent = false } = {}) {
+    if (!silent) renderDashboardLoading();
 
+    const refreshBtn = document.getElementById('dashboard-refresh-btn');
+    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = '⏳ Loading…'; }
+
+    try {
         const raw = await apiFetch('/activeClanBattle');
-        if (raw.status !== 'ok' || !raw.data) throw new Error('No active battle found');
+        if (raw.status !== 'ok' || !raw.data) throw new Error('No active battle data');
 
         const battleData = raw.data;
+        let clanEntries  = [];
+        if      (Array.isArray(battleData))          clanEntries = battleData;
+        else if (Array.isArray(battleData.Battle))   clanEntries = battleData.Battle;
+        else if (Array.isArray(battleData.Clans))    clanEntries = battleData.Clans;
+        else throw new Error(`Unknown API shape. Keys: ${Object.keys(battleData).join(', ')}`);
 
-        // The response may be an array of clan entries or an object with a Battle array
-        let clanEntries = [];
-        if (Array.isArray(battleData)) {
-            clanEntries = battleData;
-        } else if (Array.isArray(battleData.Battle)) {
-            clanEntries = battleData.Battle;
-        } else if (Array.isArray(battleData.Clans)) {
-            clanEntries = battleData.Clans;
-        } else {
-            // unknown structure — show raw keys so we can handle it
-            throw new Error(`Unexpected response shape. Keys: ${Object.keys(battleData).join(', ')}`);
-        }
+        const clanNames = clanEntries.map(e => e.Name || e.ClanName || e.name).filter(Boolean);
+        if (!clanNames.length) throw new Error('No clans in active battle');
 
-        const clanNames = clanEntries
-            .map(e => e.Name || e.ClanName || e.name)
-            .filter(Boolean);
+        // Clear old clans so a fresh battle replaces stale data
+        state.clans        = [];
+        state.nextColorIdx = 0;
+        state.war.name     = `PS99 Clan Battle`;
+        state.war.lastFetched = Date.now();
 
-        if (!clanNames.length) throw new Error('No clans found in active battle');
-
-        // Update war name with current date
-        if (!state.war.name) {
-            const today = new Date();
-            state.war.name = `War – ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-        }
-
-        let done = 0;
         for (const name of clanNames) {
-            setImportStatus(`Importing ${done + 1}/${clanNames.length}: ${name}…`, 'loading');
             await importClanByName(name);
-            done++;
         }
 
         save();
-        renderManage();
         renderDashboard();
-        setImportStatus(`✅ Imported ${done} clans from the active battle!`, 'success');
-        toast(`Loaded ${done} clans from active battle`, 'success');
+        if (!silent) toast(`Loaded ${clanNames.length} clans`, 'success');
+        setImportStatus(`✅ Loaded ${clanNames.length} clans from active battle!`, 'success');
 
     } catch (err) {
+        if (!silent) {
+            renderDashboard();
+            toast(err.message, 'error');
+        }
         setImportStatus(`❌ ${err.message}`, 'error');
-        toast(err.message, 'error');
+    } finally {
+        if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = '🔄 Refresh'; }
+    }
+}
+
+// kept for the Manage War button
+async function fetchActiveBattle() {
+    setLiveBtnsDisabled(true);
+    try {
+        await loadBattleData({ silent: false });
+        renderManage();
     } finally {
         setLiveBtnsDisabled(false);
     }
@@ -841,6 +845,13 @@ document.getElementById('fetch-clan-name')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') fetchSingleClan();
 });
 
+// Refresh button on dashboard
+document.getElementById('dashboard-refresh-btn')?.addEventListener('click', () => {
+    loadBattleData({ silent: false });
+});
+
 // ── Bootstrap ──────────────────────────────
 load();
+// Show cached data instantly, then fetch fresh data in background
 renderDashboard();
+loadBattleData({ silent: state.clans.length > 0 });

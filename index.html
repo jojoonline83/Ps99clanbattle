@@ -28,12 +28,15 @@
     <div id="dashboard-view" class="view active">
         <div class="war-info-bar">
             <div>
-                <div class="war-title" id="current-war-title">No Active War</div>
+                <div class="war-title" id="current-war-title">PS99 Clan Battle</div>
                 <div class="war-dates" id="current-war-dates"></div>
             </div>
-            <div id="war-status-badge"></div>
+            <div style="display:flex;align-items:center;gap:10px">
+                <div id="war-status-badge"></div>
+                <button class="btn-refresh" id="dashboard-refresh-btn" title="Refresh live data">🔄 Refresh</button>
+            </div>
         </div>
-        <div class="clans-grid" id="clans-grid"></div>
+        <div id="clans-grid"></div>
     </div>
 
     <!-- ── Clan Detail ── -->
