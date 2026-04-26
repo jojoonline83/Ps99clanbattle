@@ -847,7 +847,8 @@ async function loadBattleData({ silent = false } = {}) {
         const clanList = [...(page1?.data || []), ...(page2?.data || [])];
         if (!clanList.length) throw new Error('No clan data returned');
 
-        // 3. Rebuild state
+        // 3. Rebuild state — preserve existing clan snapshots/players
+        const oldClans        = state.clans;
         state.clans           = [];
         state.nextColorIdx    = 0;
         state.war.name        = cfgData.Title || 'PS99 Clan Battle';
@@ -859,12 +860,18 @@ async function loadBattleData({ silent = false } = {}) {
         clanList.forEach((entry, idx) => {
             const name   = entry.Name || entry.name || `Clan_${idx}`;
             const points = entry.Points || entry.points || 0;
-            const color  = PALETTE[state.nextColorIdx % PALETTE.length];
-            state.nextColorIdx++;
+            const old    = oldClans.find(c => c.name.toLowerCase() === name.toLowerCase());
+            const color  = old?.color || PALETTE[state.nextColorIdx % PALETTE.length];
+            if (!old) state.nextColorIdx++;
             state.clans.push({
-                id: uid(), name, tag: '', color,
-                battleTotal: points,
-                players: [],   // loaded lazily on drill-down
+                id:           old?.id           || uid(),
+                name,
+                tag:          old?.tag          || '',
+                color,
+                battleTotal:  points,
+                players:      old?.players      || [],
+                snapshots:    old?.snapshots    || [],
+                prevSnapshot: old?.prevSnapshot || null,
             });
         });
 
