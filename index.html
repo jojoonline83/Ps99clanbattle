@@ -160,6 +160,24 @@
                 </form>
             </div>
 
+            <!-- Live PS99 Data Import -->
+            <div class="manage-card full-width live-card">
+                <div class="manage-card-header">
+                    <h3>🎮 Live PS99 Battle Data</h3>
+                    <span class="live-dot"></span>
+                </div>
+                <p class="live-desc">Auto-fetch the current active clan battle from the official PS99 API.</p>
+                <div class="live-actions">
+                    <button class="btn-live" id="fetch-active-battle-btn">⚡ Fetch Active Battle</button>
+                    <div class="live-divider">or import a specific clan</div>
+                    <div class="live-manual">
+                        <input type="text" id="fetch-clan-name" class="live-input" placeholder="Enter clan name e.g. GODS">
+                        <button class="btn-live-secondary" id="fetch-clan-btn">Import</button>
+                    </div>
+                </div>
+                <div id="import-status" class="import-status"></div>
+            </div>
+
             <div class="manage-card full-width">
                 <div class="manage-card-header">
                     <h3>Clans in This War</h3>
