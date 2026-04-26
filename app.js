@@ -26,7 +26,7 @@ const PALETTE = [
 
 // ── State ──────────────────────────────────
 let state = {
-    war: { name: '', startDate: '', endDate: '' },
+    war: { name: '', startDate: '', endDate: '', battleId: '' },
     clans: [],
     nextColorIdx: 0,
 };
@@ -581,7 +581,11 @@ async function resolveUsernames(userIds) {
             });
             if (res.ok) {
                 const data = await res.json();
-                (data.data || []).forEach(u => { map[u.id] = u.name; });
+                // Store under both number and string keys for safe lookup
+                (data.data || []).forEach(u => {
+                    map[u.id]          = u.name;
+                    map[String(u.id)]  = u.name;
+                });
             }
         }
     } catch { /* usernames stay as ID fallbacks */ }
@@ -602,32 +606,33 @@ async function importClanByName(clanName, battleTotal = 0) {
     if (raw.status !== 'ok' || !raw.data) throw new Error(`Clan "${clanName}" not found`);
 
     const clanData = raw.data;
-    console.log(`[PS99] clan "${clanName}" keys:`, Object.keys(clanData));
-    console.log(`[PS99] Contribution:`, JSON.stringify(clanData.Contribution || {}).slice(0, 400));
 
-    // Battle points per player — try multiple possible key names
+    // Use current battle ID (e.g. "StarryBattle") as the contribution key
+    const battleId  = state.war.battleId || '';
+    const contrib   = clanData.Contribution || {};
+
+    // Try battle-specific key first, then common fallbacks
+    const battleArr = contrib[battleId] || contrib.Battle || contrib.battle || contrib.Current || [];
+
     const battlePoints = {};
-    const contrib = clanData.Contribution || {};
-    const battleArr = contrib.Battle || contrib.battle || contrib.Current || contrib.current || [];
     battleArr.forEach(c => {
-        const uid2 = String(c.UserID ?? c.userId ?? c.id ?? '');
-        const pts  = c.Points ?? c.points ?? c.Damage ?? c.damage ?? 0;
-        if (uid2) battlePoints[uid2] = pts;
+        const id  = String(c.UserID ?? c.userId ?? c.id ?? '');
+        const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? 0;
+        if (id) battlePoints[id] = pts;
     });
-    console.log(`[PS99] Battle entries found: ${battleArr.length}, sample:`, JSON.stringify(battleArr.slice(0, 3)));
 
     const members = clanData.Members || clanData.members || [];
-    const allIds  = members.map(m => m.UserID ?? m.userId ?? m.id);
+    const allIds  = members.map(m => m.UserID ?? m.userId ?? m.id).filter(Boolean);
 
     setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…`, 'loading');
     const usernameMap = await resolveUsernames(allIds);
 
     const players = members.map(m => {
-        const uid2 = m.UserID ?? m.userId ?? m.id;
+        const memberId = m.UserID ?? m.userId ?? m.id;
         return {
             id:       uid(),
-            username: usernameMap[uid2] || `User_${uid2}`,
-            points:   battlePoints[String(uid2)] || 0,
+            username: usernameMap[memberId] || usernameMap[String(memberId)] || `User_${memberId}`,
+            points:   battlePoints[String(memberId)] || 0,
             role:     permToRole(m.PermissionLevel ?? m.permissionLevel ?? 0),
         };
     });
@@ -679,6 +684,7 @@ async function loadBattleData({ silent = false } = {}) {
         state.clans           = [];
         state.nextColorIdx    = 0;
         state.war.name        = cfgData.Title || 'PS99 Clan Battle';
+        state.war.battleId    = cfgData._id   || cfgData.Title || '';
         state.war.lastFetched = Date.now();
         state.war.startDate   = startTime ? startTime.toISOString().split('T')[0] : '';
         state.war.endDate     = endTime   ? endTime.toISOString().split('T')[0]   : '';
