@@ -70,7 +70,8 @@ function fmt(n) {
 }
 
 function clanTotal(clan) {
-    return clan.players.reduce((s, p) => s + (p.points || 0), 0);
+    const fromPlayers = clan.players.reduce((s, p) => s + (p.points || 0), 0);
+    return Math.max(fromPlayers, clan.battleTotal || 0);
 }
 
 function sortedClans() {
@@ -585,54 +586,66 @@ function permToRole(level) {
     return 'Member';
 }
 
-async function importClanByName(clanName) {
+async function importClanByName(clanName, battleTotal = 0) {
     setImportStatus(`Fetching clan "${clanName}"…`, 'loading');
 
     const raw = await apiFetch(`/clan/${encodeURIComponent(clanName)}`);
-    if (raw.status !== 'ok' || !raw.data) throw new Error('Clan not found');
+    if (raw.status !== 'ok' || !raw.data) throw new Error(`Clan "${clanName}" not found`);
 
-    const clan = raw.data;
+    const clanData = raw.data;
+    console.log(`[PS99] clan "${clanName}" keys:`, Object.keys(clanData));
+    console.log(`[PS99] Contribution:`, JSON.stringify(clanData.Contribution || {}).slice(0, 400));
 
-    // Battle points indexed by UserID
+    // Battle points per player — try multiple possible key names
     const battlePoints = {};
-    (clan.Contribution?.Battle || []).forEach(c => {
-        battlePoints[String(c.UserID)] = c.Points || 0;
+    const contrib = clanData.Contribution || {};
+    const battleArr = contrib.Battle || contrib.battle || contrib.Current || contrib.current || [];
+    battleArr.forEach(c => {
+        const uid2 = String(c.UserID ?? c.userId ?? c.id ?? '');
+        const pts  = c.Points ?? c.points ?? c.Damage ?? c.damage ?? 0;
+        if (uid2) battlePoints[uid2] = pts;
     });
+    console.log(`[PS99] Battle entries found: ${battleArr.length}, sample:`, JSON.stringify(battleArr.slice(0, 3)));
 
-    const members   = clan.Members || [];
-    const allIds    = members.map(m => m.UserID);
+    const members = clanData.Members || clanData.members || [];
+    const allIds  = members.map(m => m.UserID ?? m.userId ?? m.id);
 
-    setImportStatus(`Resolving ${allIds.length} usernames…`, 'loading');
+    setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…`, 'loading');
     const usernameMap = await resolveUsernames(allIds);
 
-    const players = members.map(m => ({
-        id:       uid(),
-        username: usernameMap[m.UserID] || `User_${m.UserID}`,
-        points:   battlePoints[String(m.UserID)] || 0,
-        role:     permToRole(m.PermissionLevel || 0),
-    }));
+    const players = members.map(m => {
+        const uid2 = m.UserID ?? m.userId ?? m.id;
+        return {
+            id:       uid(),
+            username: usernameMap[uid2] || `User_${uid2}`,
+            points:   battlePoints[String(uid2)] || 0,
+            role:     permToRole(m.PermissionLevel ?? m.permissionLevel ?? 0),
+        };
+    });
 
-    // Update existing clan or create new
-    const existing = state.clans.find(
-        c => c.name.toLowerCase() === clanName.toLowerCase()
-    );
+    const playerSum = players.reduce((s, p) => s + p.points, 0);
+    // Use whichever is larger: summed player points or the clan total from the battle response
+    const resolvedTotal = Math.max(playerSum, battleTotal);
 
+    const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
     if (existing) {
-        existing.players = players;
+        existing.players     = players;
+        existing.battleTotal = resolvedTotal;
     } else {
         const color = PALETTE[state.nextColorIdx % PALETTE.length];
         state.nextColorIdx = (state.nextColorIdx + 1) % PALETTE.length;
         state.clans.push({
             id: uid(),
-            name: clan.Name || clanName,
-            tag:  `[${(clan.Name || clanName).slice(0, 6).toUpperCase()}]`,
+            name: clanData.Name || clanName,
+            tag:  '',
             color,
             players,
+            battleTotal: resolvedTotal,
         });
     }
 
     save();
-    return clan.Name || clanName;
+    return clanData.Name || clanName;
 }
 
 async function loadBattleData({ silent = false } = {}) {
@@ -652,8 +665,19 @@ async function loadBattleData({ silent = false } = {}) {
         else if (Array.isArray(battleData.Clans))    clanEntries = battleData.Clans;
         else throw new Error(`Unknown API shape. Keys: ${Object.keys(battleData).join(', ')}`);
 
+        // Log raw shape to console so we can diagnose point issues
+        console.log('[PS99] activeClanBattle raw:', JSON.stringify(battleData).slice(0, 800));
+
         const clanNames = clanEntries.map(e => e.Name || e.ClanName || e.name).filter(Boolean);
         if (!clanNames.length) throw new Error('No clans in active battle');
+
+        // Build a map of clan name → battle total points from the battle response
+        const battleTotals = {};
+        clanEntries.forEach(e => {
+            const name = e.Name || e.ClanName || e.name;
+            if (name) battleTotals[name] = e.Points || e.TotalPoints || e.Damage || 0;
+        });
+        console.log('[PS99] Battle totals:', battleTotals);
 
         // Clear old clans so a fresh battle replaces stale data
         state.clans        = [];
@@ -662,7 +686,7 @@ async function loadBattleData({ silent = false } = {}) {
         state.war.lastFetched = Date.now();
 
         for (const name of clanNames) {
-            await importClanByName(name);
+            await importClanByName(name, battleTotals[name] || 0);
         }
 
         save();
