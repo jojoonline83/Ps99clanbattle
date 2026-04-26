@@ -257,10 +257,10 @@ function renderClanDetail() {
     if (clan._debug) {
         const d = clan._debug;
         dbgEl.innerHTML = `<b>DEBUG — contribution lookup</b><br>
-contribKeys: <b>${esc(d.contribKeys)}</b><br>
-usedKey: <b>${esc(d.usedKey || 'NONE')}</b>  entries: <b>${d.entryCount}</b>  playerSum: <b>${d.playerSum}</b><br>
-sampleEntry: <code>${esc(d.sampleEntry)}</code><br>
-memberID[0]: <b>${esc(d.sampleMemberId)}</b>  battlePointsKey[0]: <b>${esc(d.sampleBPKey)}</b>`;
+clanDataKeys: <b>${esc(d.clanDataKeys)}</b><br>
+contribKeys: <b>${esc(d.contribKeys)}</b>  usedKey: <b>${esc(d.usedKey || 'NONE')}</b>  entries: <b>${d.entryCount}</b><br>
+sampleMember: <code>${esc(d.sampleMember)}</code><br>
+sampleContribEntry: <code>${esc(d.sampleEntry)}</code>`;
         dbgEl.style.display = 'block';
     } else {
         dbgEl.style.display = 'none';
@@ -622,6 +622,11 @@ async function importClanByName(clanName, battleTotal = 0) {
 
     const clanData = raw.data;
 
+    // Log every top-level field so we can find where player points live
+    console.log('[PS99] clanData keys:', Object.keys(clanData));
+    const firstMember = (clanData.Members || clanData.members || [])[0];
+    if (firstMember) console.log('[PS99] Member[0] fields:', JSON.stringify(firstMember));
+
     // Contribution key auto-discovery:
     // 1. Try stored battleId first (e.g. "StarryBattle")
     // 2. Fall back to whichever key has the most entries — that's the active battle
@@ -707,14 +712,15 @@ async function importClanByName(clanName, battleTotal = 0) {
 
     // Debug info — stored so renderClanDetail can display it
     const sampleEntry   = battleArr[0] ? JSON.stringify(battleArr[0]) : 'none';
-    const sampleMember  = validMembers[0] ? String(validMembers[0].UserID ?? validMembers[0].userId ?? validMembers[0].id) : 'none';
+    const sampleMember  = validMembers[0] ? JSON.stringify(validMembers[0]) : 'none';
     const sampleBPKey   = Object.keys(battlePoints)[0] ?? 'none';
     const _debug = {
-        contribKeys: Object.keys(contrib).join(', ') || 'EMPTY',
+        clanDataKeys:  Object.keys(clanData).join(', '),
+        contribKeys:   Object.keys(contrib).join(', ') || 'EMPTY',
         usedKey,
-        entryCount: battleArr.length,
+        entryCount:    battleArr.length,
         sampleEntry,
-        sampleMemberId: sampleMember,
+        sampleMember,
         sampleBPKey,
         playerSum,
     };
