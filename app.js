@@ -192,11 +192,34 @@ function renderDashboard() {
     grid.className = 'clans-grid';
     const maxPts = clanTotal(ranked[0]) || 1;
 
+    const dashNow = Date.now();
+    let dashHours = warHoursElapsed();
+
     grid.innerHTML = ranked.map((clan, idx) => {
         const total     = clanTotal(clan);
         const pct       = Math.round((total / maxPts) * 100);
         const rankClass = idx === 0 ? 'rank-1' : idx === 1 ? 'rank-2' : idx === 2 ? 'rank-3' : 'rank-other';
         const topPlayer = [...clan.players].sort((a, b) => b.points - a.points)[0];
+
+        // Avg/hr
+        let hrs = dashHours;
+        if (hrs === 0) {
+            const snaps  = clan.snapshots || [];
+            const oldest = snaps.length ? Math.min(...snaps.map(s => s.ts)) : dashNow;
+            hrs = Math.max(1, (dashNow - oldest) / 3_600_000);
+        }
+        const avgHrCard = fmt(Math.round(total / hrs)) + '/hr';
+
+        // Delta since last refresh
+        const prevSnap = clan.prevSnapshot || null;
+        let cardDelta = null;
+        if (prevSnap && clan.players.length) {
+            cardDelta = clan.players.reduce((sum, p) => {
+                const prev = prevSnap.pts?.[p.userId] ?? null;
+                return sum + (prev !== null ? Math.max(0, p.points - prev) : 0);
+            }, 0);
+        }
+        const cardDeltaText = cardDelta !== null ? `+${fmt(cardDelta)} since refresh` : '';
 
         return `
           <div class="clan-card" style="--clan-color:${clan.color}"
@@ -210,6 +233,10 @@ function renderDashboard() {
             </div>
             <div class="clan-points-label">Total Points</div>
             <div class="clan-points">${fmt(total)}</div>
+            <div class="clan-card-rates">
+              <span class="card-rate">${avgHrCard}</span>
+              ${cardDeltaText ? `<span class="card-delta">${cardDeltaText}</span>` : ''}
+            </div>
             <div class="progress-bar">
               <div class="progress-fill" style="width:${pct}%;background:${clan.color}"></div>
             </div>
@@ -230,7 +257,32 @@ function renderClanDetail() {
     const ranked = sortedClans();
     const rank   = ranked.findIndex(c => c.id === clan.id) + 1;
     const total  = clanTotal(clan);
-    const avg    = clan.players.length ? Math.round(total / clan.players.length) : 0;
+
+    // Clan avg/hr
+    let hours = warHoursElapsed();
+    if (hours === 0) {
+        const snaps  = clan.snapshots || [];
+        const oldest = snaps.length ? Math.min(...snaps.map(s => s.ts)) : Date.now();
+        hours = Math.max(1, (Date.now() - oldest) / 3_600_000);
+    }
+    const avgHr = Math.round(total / hours);
+
+    // Clan delta since last refresh
+    const prevSnap = clan.prevSnapshot || null;
+    let delta = null;
+    if (prevSnap && clan.players.length) {
+        delta = clan.players.reduce((sum, p) => {
+            const prev = prevSnap.pts?.[p.userId] ?? null;
+            return sum + (prev !== null ? Math.max(0, p.points - prev) : 0);
+        }, 0);
+    }
+    const snapAgeMin = prevSnap ? Math.round((Date.now() - prevSnap.ts) / 60000) : null;
+    const ageLabel   = snapAgeMin !== null
+        ? (snapAgeMin >= 60 ? `${Math.round(snapAgeMin / 60)}hr` : `${snapAgeMin}m`) + ' ago'
+        : '';
+    const deltaText  = delta !== null
+        ? `+${fmt(delta)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
+        : '—';
 
     // Header
     document.getElementById('clan-detail-color-bar').style.background = clan.color;
@@ -239,7 +291,8 @@ function renderClanDetail() {
     document.getElementById('clan-detail-points').textContent  = fmt(total);
     document.getElementById('clan-detail-players').textContent = clan.players.length;
     document.getElementById('clan-detail-rank').textContent    = `#${rank}`;
-    document.getElementById('clan-detail-avg').textContent     = fmt(avg);
+    document.getElementById('clan-detail-avg').textContent     = fmt(avgHr) + '/hr';
+    document.getElementById('clan-detail-delta').textContent   = deltaText;
 
     renderPlayersTable(clan);
 }
