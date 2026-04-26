@@ -127,7 +127,16 @@ function showClanDetail(clanId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('clan-detail-view').classList.add('active');
-    renderClanDetail();
+    const clan = getClan(clanId);
+    // Lazy-load players if not yet fetched
+    if (clan && clan.players.length === 0 && clan.name) {
+        renderClanDetail();
+        importClanByName(clan.name, clan.battleTotal || 0)
+            .then(() => renderClanDetail())
+            .catch(() => renderClanDetail());
+    } else {
+        renderClanDetail();
+    }
 }
 
 // ── Dashboard ──────────────────────────────
@@ -655,50 +664,44 @@ async function loadBattleData({ silent = false } = {}) {
     if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = '⏳ Loading…'; }
 
     try {
-        const raw = await apiFetch('/activeClanBattle');
-        if (raw.status !== 'ok' || !raw.data) throw new Error('No active battle data');
+        // 1. Battle config → name + dates only
+        const battleCfg = await apiFetch('/activeClanBattle');
+        const cfgData   = battleCfg?.data?.configData || {};
+        const startTime = cfgData.StartTime  ? new Date(cfgData.StartTime  * 1000) : null;
+        const endTime   = cfgData.FinishTime ? new Date(cfgData.FinishTime * 1000) : null;
 
-        const battleData = raw.data;
-        let clanEntries  = [];
-        if      (Array.isArray(battleData))          clanEntries = battleData;
-        else if (Array.isArray(battleData.Battle))   clanEntries = battleData.Battle;
-        else if (Array.isArray(battleData.Clans))    clanEntries = battleData.Clans;
-        else throw new Error(`Unknown API shape. Keys: ${Object.keys(battleData).join(', ')}`);
+        // 2. Top clans sorted by Points — this IS the battle leaderboard
+        const clansRaw = await apiFetch('/clans?page=1&pageSize=50&sort=Points&sortOrder=desc');
+        const clanList = clansRaw?.data || [];
+        if (!clanList.length) throw new Error('No clan data returned');
 
-        // Log raw shape to console so we can diagnose point issues
-        console.log('[PS99] activeClanBattle raw:', JSON.stringify(battleData).slice(0, 800));
-
-        const clanNames = clanEntries.map(e => e.Name || e.ClanName || e.name).filter(Boolean);
-        if (!clanNames.length) throw new Error('No clans in active battle');
-
-        // Build a map of clan name → battle total points from the battle response
-        const battleTotals = {};
-        clanEntries.forEach(e => {
-            const name = e.Name || e.ClanName || e.name;
-            if (name) battleTotals[name] = e.Points || e.TotalPoints || e.Damage || 0;
-        });
-        console.log('[PS99] Battle totals:', battleTotals);
-
-        // Clear old clans so a fresh battle replaces stale data
-        state.clans        = [];
-        state.nextColorIdx = 0;
-        state.war.name     = `PS99 Clan Battle`;
+        // 3. Rebuild state
+        state.clans           = [];
+        state.nextColorIdx    = 0;
+        state.war.name        = cfgData.Title || 'PS99 Clan Battle';
         state.war.lastFetched = Date.now();
+        state.war.startDate   = startTime ? startTime.toISOString().split('T')[0] : '';
+        state.war.endDate     = endTime   ? endTime.toISOString().split('T')[0]   : '';
 
-        for (const name of clanNames) {
-            await importClanByName(name, battleTotals[name] || 0);
-        }
+        clanList.forEach((entry, idx) => {
+            const name   = entry.Name || entry.name || `Clan_${idx}`;
+            const points = entry.Points || entry.points || 0;
+            const color  = PALETTE[state.nextColorIdx % PALETTE.length];
+            state.nextColorIdx++;
+            state.clans.push({
+                id: uid(), name, tag: '', color,
+                battleTotal: points,
+                players: [],   // loaded lazily on drill-down
+            });
+        });
 
         save();
         renderDashboard();
-        if (!silent) toast(`Loaded ${clanNames.length} clans`, 'success');
-        setImportStatus(`✅ Loaded ${clanNames.length} clans from active battle!`, 'success');
+        if (!silent) toast(`Loaded top ${clanList.length} clans`, 'success');
+        setImportStatus(`✅ Loaded ${clanList.length} clans!`, 'success');
 
     } catch (err) {
-        if (!silent) {
-            renderDashboard();
-            toast(err.message, 'error');
-        }
+        if (!silent) { renderDashboard(); toast(err.message, 'error'); }
         setImportStatus(`❌ ${err.message}`, 'error');
     } finally {
         if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = '🔄 Refresh'; }
