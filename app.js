@@ -4,6 +4,9 @@
 
 'use strict';
 
+// Change tab title so we can confirm which JS version is running
+document.title = 'PS99 Battle Tracker [v28]';
+
 // ── Constants ──────────────────────────────
 const STORAGE_KEY = 'ps99_tracker_v1';
 const API_BASE    = 'https://biggamesapi.io/api';
@@ -377,12 +380,12 @@ function renderPlayersTable(clan) {
             pts5min = Math.round(ptsPerHr / 12);
         }
 
-        const SEP = `<span style="color:#4b6080;font-size:11px;font-weight:400;margin:0 4px">·</span>`;
-        const avgSpan   = `<span style="color:#e2e8f0;font-size:12px;font-weight:700">${fmt(Math.round(ptsPerHr))}/hr</span>`;
+        const SEP = `<span style="color:#6b7280;margin:0 5px">·</span>`;
+        const avgSpan   = `<span style="color:#f59e0b;font-size:12px;font-weight:700">${fmt(Math.round(ptsPerHr))}/hr</span>`;
         const deltaSpan = delta1h !== null
             ? `${SEP}<span style="color:#10b981;font-size:12px;font-weight:700">+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}</span>`
             : '';
-        const pts5Span  = `${SEP}<span style="color:#f59e0b;font-size:12px;font-weight:700">${fmt(pts5min)}/5m</span>`;
+        const pts5Span  = `${SEP}<span style="color:#22d3ee;font-size:12px;font-weight:700">${fmt(pts5min)}/5m</span>`;
 
         return `
           <tr>
