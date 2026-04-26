@@ -284,24 +284,15 @@ function renderClanDetail() {
         ? `+${fmt(delta)}${ageLabel ? ' (' + ageLabel + ')' : ''}`
         : '—';
 
-    // Clan delta last 5 minutes (snapshot closest to 5m ago, within 2–10 min window)
-    const detailNow     = Date.now();
-    const detailSnaps   = clan.snapshots || [];
-    const target5m      = detailNow - 5 * 60_000;
-    const snap5mClan    = detailSnaps
-        .filter(s => s.ts <= detailNow - 2 * 60_000 && s.ts >= detailNow - 10 * 60_000)
-        .sort((a, b) => Math.abs(a.ts - target5m) - Math.abs(b.ts - target5m))[0] || null;
-    let delta5m = null;
-    if (snap5mClan && clan.players.length) {
-        delta5m = clan.players.reduce((sum, p) => {
-            const prev = snap5mClan.pts?.[p.userId] ?? null;
-            return sum + (prev !== null ? Math.max(0, p.points - prev) : 0);
-        }, 0);
+    // Clan pts/5min: project from since-refresh rate if available, else from avg/hr
+    const detailSnapAge = prevSnap ? Math.max(1, Math.round((Date.now() - prevSnap.ts) / 60000)) : null;
+    let clan5min;
+    if (delta !== null && detailSnapAge > 0) {
+        clan5min = Math.round(delta / detailSnapAge * 5);
+    } else {
+        clan5min = Math.round(avgHr / 12);
     }
-    const snap5mAgeMin = snap5mClan ? Math.round((detailNow - snap5mClan.ts) / 60000) : null;
-    const delta5mText  = delta5m !== null
-        ? `+${fmt(delta5m)}${snap5mAgeMin !== null ? ' (' + snap5mAgeMin + 'm)' : ''}`
-        : '—';
+    const delta5mText = fmt(clan5min) + '/5m';
 
     // Header
     const setEl = (id, val, color) => {
@@ -366,18 +357,10 @@ function renderPlayersTable(clan) {
 
     // Use previous refresh snapshot for delta (available after 2nd import)
     const snap = clan.prevSnapshot || null;
-    const snapAgeMin = snap ? Math.round((now - snap.ts) / 60000) : null;
+    const snapAgeMin = snap ? Math.max(1, Math.round((now - snap.ts) / 60000)) : null;
     const ageLabel   = snapAgeMin !== null
         ? (snapAgeMin >= 60 ? `${Math.round(snapAgeMin / 60)}hr` : `${snapAgeMin}m`) + ' ago'
         : '';
-
-    // Snapshot closest to 5 minutes ago (within 2–10 min window)
-    const snapshots  = clan.snapshots || [];
-    const t5m        = now - 5 * 60_000;
-    const snap5m     = snapshots
-        .filter(s => s.ts <= now - 2 * 60_000 && s.ts >= now - 10 * 60_000)
-        .sort((a, b) => Math.abs(a.ts - t5m) - Math.abs(b.ts - t5m))[0] || null;
-    const snap5mAge  = snap5m ? Math.round((now - snap5m.ts) / 60000) : null;
 
     tbody.innerHTML = players.map((p, idx) => {
         const ptsPerHr = p.points / hours;
@@ -386,24 +369,26 @@ function renderPlayersTable(clan) {
         const prevPts = snap?.pts?.[p.userId] ?? null;
         const delta1h = prevPts !== null ? Math.max(0, p.points - prevPts) : null;
 
-        // Points gained in last ~5 minutes
-        const prev5mPts = snap5m?.pts?.[p.userId] ?? null;
-        const delta5m   = prev5mPts !== null ? Math.max(0, p.points - prev5mPts) : null;
+        // Pts/5min: project from since-refresh rate if available, else from avg/hr
+        let pts5min;
+        if (delta1h !== null && snapAgeMin > 0) {
+            pts5min = Math.round(delta1h / snapAgeMin * 5);
+        } else {
+            pts5min = Math.round(ptsPerHr / 12);
+        }
 
-        const avgSpan    = `<span class="sub-avg">${fmt(Math.round(ptsPerHr))}/hr</span>`;
-        const deltaSpan  = delta1h !== null
+        const avgSpan   = `<span class="sub-avg">${fmt(Math.round(ptsPerHr))}/hr</span>`;
+        const deltaSpan = delta1h !== null
             ? `<span class="sub-delta">+${fmt(delta1h)}${ageLabel ? ' (' + ageLabel + ')' : ''}</span>`
             : '';
-        const delta5Span = delta5m !== null
-            ? `<span class="sub-5m">+${fmt(delta5m)}${snap5mAge !== null ? ' (' + snap5mAge + 'm)' : ''}</span>`
-            : '';
+        const pts5Span  = `<span class="sub-5m">${fmt(pts5min)}/5m</span>`;
 
         return `
           <tr>
             <td class="player-rank">${idx + 1}</td>
             <td class="player-name">
               <div>${esc(p.username)} <span class="role-badge ${getRoleClass(p.role)}">${esc(p.role || 'Member')}</span></div>
-              <div class="player-sub">${avgSpan}${deltaSpan}${delta5Span}</div>
+              <div class="player-sub">${avgSpan}${deltaSpan}${pts5Span}</div>
             </td>
             <td class="player-points" style="color:${clan.color}">${fmt(p.points)}</td>
           </tr>`;
