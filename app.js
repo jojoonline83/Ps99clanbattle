@@ -61,12 +61,7 @@ function esc(str) {
 }
 
 function fmt(n) {
-    n = Number(n) || 0;
-    if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
-    if (n >= 1e9)  return (n / 1e9).toFixed(2)  + 'B';
-    if (n >= 1e6)  return (n / 1e6).toFixed(2)  + 'M';
-    if (n >= 1e3)  return (n / 1e3).toFixed(1)  + 'K';
-    return n.toLocaleString();
+    return (Number(n) || 0).toLocaleString();
 }
 
 function warHoursElapsed() {
@@ -273,7 +268,7 @@ function renderPlayersTable(clan) {
     if (players.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">
+            <td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">
               ${search ? 'No players match your search.' : 'No players yet.'}
             </td>
           </tr>`;
@@ -292,7 +287,6 @@ function renderPlayersTable(clan) {
         .sort((a, b) => b.ts - a.ts)[0] || null;
 
     tbody.innerHTML = players.map((p, idx) => {
-        const pct      = total > 0 ? ((p.points / total) * 100).toFixed(1) : '0.0';
         const ptsPerHr = hours > 1 ? p.points / hours : 0;
 
         // Points gained since ~1hr ago snapshot
@@ -307,8 +301,7 @@ function renderPlayersTable(clan) {
               <span class="role-badge ${getRoleClass(p.role)}">${esc(p.role || 'Member')}</span>
             </td>
             <td class="player-points" style="color:${clan.color}">${fmt(p.points)}</td>
-            <td class="player-pct">${pct}%</td>
-            <td class="player-vsavg">${hours > 1 ? fmt(ptsPerHr) + '/hr' : '—'}</td>
+            <td class="player-vsavg">${hours > 1 ? fmt(Math.round(ptsPerHr)) + '/hr' : '—'}</td>
             <td class="player-1hr">${delta1h !== null ? fmt(delta1h) : '—'}</td>
           </tr>`;
     }).join('');
