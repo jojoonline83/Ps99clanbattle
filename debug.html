@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PS99 API Debug</title>
+<style>
+body { font-family: monospace; background:#0a0e1a; color:#e2e8f0; padding:20px; }
+h2 { color:#6366f1; }
+pre { background:#111827; padding:16px; border-radius:8px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; border:1px solid #1f2d45; }
+button { background:#6366f1; color:#fff; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; margin:8px 4px; font-size:14px; }
+.err { color:#ef4444; }
+.ok  { color:#10b981; }
+</style>
+</head>
+<body>
+<h2>PS99 API Debug</h2>
+<button onclick="fetchBattle()">1. Fetch activeClanBattle</button>
+<button onclick="fetchClan()">2. Fetch Clan Detail (uses name from step 1)</button>
+<button onclick="copyAll()">Copy All to Clipboard</button>
+<h3>activeClanBattle response:</h3>
+<pre id="battle-out">Click button above…</pre>
+<h3>Clan detail response (first clan from battle):</h3>
+<pre id="clan-out">Run step 1 first…</pre>
+
+<script>
+const PROXY = 'https://corsproxy.io/?url=';
+const API   = 'https://biggamesapi.io/api';
+let firstClanName = '';
+
+async function apiFetch(path) {
+  const url = API + path;
+  try {
+    const r = await fetch(url);
+    if (r.ok) return r.json();
+  } catch {}
+  const r = await fetch(PROXY + encodeURIComponent(url));
+  return r.json();
+}
+
+async function fetchBattle() {
+  const el = document.getElementById('battle-out');
+  el.textContent = 'Fetching…';
+  try {
+    const data = await apiFetch('/activeClanBattle');
+    el.className = 'ok';
+    el.textContent = JSON.stringify(data, null, 2);
+    // Extract first clan name
+    const d = data.data;
+    const arr = Array.isArray(d) ? d : (d?.Battle || d?.Clans || d?.clans || []);
+    const first = arr[0];
+    firstClanName = first?.Name || first?.ClanName || first?.name || '';
+    if (firstClanName) document.getElementById('clan-out').textContent = `Ready — click "Fetch Clan Detail" to load "${firstClanName}"`;
+  } catch(e) {
+    el.className = 'err';
+    el.textContent = 'ERROR: ' + e.message;
+  }
+}
+
+async function fetchClan() {
+  if (!firstClanName) { alert('Run step 1 first'); return; }
+  const el = document.getElementById('clan-out');
+  el.textContent = `Fetching clan "${firstClanName}"…`;
+  try {
+    const data = await apiFetch('/clan/' + encodeURIComponent(firstClanName));
+    el.className = 'ok';
+    el.textContent = JSON.stringify(data, null, 2);
+  } catch(e) {
+    el.className = 'err';
+    el.textContent = 'ERROR: ' + e.message;
+  }
+}
+
+function copyAll() {
+  const txt = document.getElementById('battle-out').textContent + '\n\n---\n\n' + document.getElementById('clan-out').textContent;
+  navigator.clipboard.writeText(txt).then(() => alert('Copied!'));
+}
+</script>
+</body>
+</html>
