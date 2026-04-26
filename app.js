@@ -608,38 +608,44 @@ async function importClanByName(clanName, battleTotal = 0) {
     const battleId = state.war.battleId || '';
     const contrib  = clanData.Contribution || {};
 
-    // Normalize any contribution value (array or dict) into a flat array of {UserID, Points}
+    // Normalize any contribution value (array or object) into [{UserID, Points}]
     function normalizeContrib(val) {
         if (!val) return [];
         if (Array.isArray(val)) return val;
-        // Object form: {"userId": points} or {"userId": {Points: n}}
         if (typeof val === 'object') {
             return Object.entries(val).map(([uid, v]) => ({
                 UserID: Number(uid),
-                Points: typeof v === 'object' ? (v.Points ?? v.points ?? v.Damage ?? v.damage ?? 0) : Number(v),
+                Points: typeof v === 'object'
+                    ? (v.Points ?? v.points ?? v.Damage ?? v.damage ?? v.Score ?? v.score ?? 0)
+                    : Number(v),
             }));
         }
         return [];
     }
 
-    // Try stored battleId first; then auto-discover the key with most entries
-    let battleArr = normalizeContrib(contrib[battleId]);
-    if (!battleArr.length) {
-        let bestKey = '', bestLen = 0, bestArr = [];
+    // Always pick the key with the most entries (current battle data wins)
+    let usedKey = '';
+    let battleArr = [];
+    {
+        let bestLen = 0;
+        // Check stored battleId first so we prefer it on equal lengths
+        const stored = normalizeContrib(contrib[battleId]);
+        if (stored.length) { battleArr = stored; usedKey = battleId; bestLen = stored.length; }
         for (const k of Object.keys(contrib)) {
             const arr = normalizeContrib(contrib[k]);
-            if (arr.length > bestLen) { bestLen = arr.length; bestKey = k; bestArr = arr; }
+            if (arr.length > bestLen) { bestLen = arr.length; battleArr = arr; usedKey = k; }
         }
-        if (bestKey) {
-            battleArr = bestArr;
-            if (!state.war.battleId) state.war.battleId = bestKey;
-        }
+        if (usedKey) state.war.battleId = usedKey;  // always sync to best key found
     }
+
+    console.log(`[PS99] Contribution keys: ${Object.keys(contrib).join(', ')}`);
+    console.log(`[PS99] Using key "${usedKey}" → ${battleArr.length} entries`);
+    if (battleArr.length) console.log('[PS99] Sample entry:', JSON.stringify(battleArr[0]));
 
     const battlePoints = {};
     battleArr.forEach(c => {
-        const id  = String(c.UserID ?? c.userId ?? c.id ?? '');
-        const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? 0;
+        const id  = String(c.UserID ?? c.userId ?? c.Id ?? c.ID ?? c.id ?? '');
+        const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? c.Score ?? c.score ?? 0;
         if (id && id !== '0') battlePoints[id] = pts;
     });
 
@@ -662,7 +668,8 @@ async function importClanByName(clanName, battleTotal = 0) {
 
     const allIds = validMembers.map(m => m.UserID ?? m.userId ?? m.id);
 
-    setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…`, 'loading');
+    const keyInfo = usedKey ? ` [key: ${usedKey}, ${battleArr.length} entries]` : ' [no contribution data found]';
+    setImportStatus(`Resolving ${allIds.length} usernames for ${clanName}…${keyInfo}`, 'loading');
     const usernameMap = await resolveUsernames(allIds);
 
     const players = validMembers.map(m => {
@@ -670,7 +677,7 @@ async function importClanByName(clanName, battleTotal = 0) {
         return {
             id:       uid(),
             username: usernameMap[memberId] || usernameMap[String(memberId)] || `User_${memberId}`,
-            points:   battlePoints[String(memberId)] || 0,
+            points:   battlePoints[String(memberId)] ?? battlePoints[String(Number(memberId))] ?? 0,
             role:     permToRole(m.PermissionLevel ?? m.permissionLevel ?? 0),
         };
     });
