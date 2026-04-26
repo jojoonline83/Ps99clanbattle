@@ -258,9 +258,10 @@ function renderClanDetail() {
         const d = clan._debug;
         dbgEl.innerHTML = `<b>DEBUG — contribution lookup</b><br>
 clanDataKeys: <b>${esc(d.clanDataKeys)}</b><br>
-contribKeys: <b>${esc(d.contribKeys)}</b>  usedKey: <b>${esc(d.usedKey || 'NONE')}</b>  entries: <b>${d.entryCount}</b><br>
+battlesKeys: <b>${esc(d.battlesKeys)}</b>  contribKeys: <b>${esc(d.contribKeys)}</b><br>
+usedKey: <b>${esc(d.usedKey || 'NONE')}</b>  entries: <b>${d.entryCount}</b>  playerSum: <b>${d.playerSum}</b><br>
 sampleMember: <code>${esc(d.sampleMember)}</code><br>
-sampleContribEntry: <code>${esc(d.sampleEntry)}</code>`;
+sampleEntry: <code>${esc(d.sampleEntry)}</code>`;
         dbgEl.style.display = 'block';
     } else {
         dbgEl.style.display = 'none';
@@ -626,14 +627,16 @@ async function importClanByName(clanName, battleTotal = 0) {
     console.log('[PS99] clanData keys:', Object.keys(clanData));
     const firstMember = (clanData.Members || clanData.members || [])[0];
     if (firstMember) console.log('[PS99] Member[0] fields:', JSON.stringify(firstMember));
+    if (clanData.Battles) console.log('[PS99] Battles:', JSON.stringify(clanData.Battles).slice(0, 500));
 
-    // Contribution key auto-discovery:
-    // 1. Try stored battleId first (e.g. "StarryBattle")
-    // 2. Fall back to whichever key has the most entries — that's the active battle
-    const battleId = state.war.battleId || '';
-    const contrib  = clanData.Contribution || {};
+    // ── Find player battle points ──────────────────────────────────────────
+    // The API stores current battle data in clanData.Battles (not Contribution)
+    // Contribution is only populated after a battle ends.
+    const battleId  = state.war.battleId || '';
+    const battles   = clanData.Battles   || {};
+    const contrib   = clanData.Contribution || {};
 
-    // Normalize any contribution value (array or object) into [{UserID, Points}]
+    // Normalize any value (array or object) into [{UserID, Points}]
     function normalizeContrib(val) {
         if (!val) return [];
         if (Array.isArray(val)) return val;
@@ -648,24 +651,21 @@ async function importClanByName(clanName, battleTotal = 0) {
         return [];
     }
 
-    // Always pick the key with the most entries (current battle data wins)
-    let usedKey = '';
+    // Try Battles first (active battle), then fall back to Contribution (ended battles)
+    let usedKey  = '';
     let battleArr = [];
-    {
+    for (const source of [battles, contrib]) {
         let bestLen = 0;
-        // Check stored battleId first so we prefer it on equal lengths
-        const stored = normalizeContrib(contrib[battleId]);
+        // Prefer the stored battleId key
+        const stored = normalizeContrib(source[battleId]);
         if (stored.length) { battleArr = stored; usedKey = battleId; bestLen = stored.length; }
-        for (const k of Object.keys(contrib)) {
-            const arr = normalizeContrib(contrib[k]);
+        for (const k of Object.keys(source)) {
+            const arr = normalizeContrib(source[k]);
             if (arr.length > bestLen) { bestLen = arr.length; battleArr = arr; usedKey = k; }
         }
-        if (usedKey) state.war.battleId = usedKey;  // always sync to best key found
+        if (battleArr.length) break;   // found data — stop searching
     }
-
-    console.log(`[PS99] Contribution keys: ${Object.keys(contrib).join(', ')}`);
-    console.log(`[PS99] Using key "${usedKey}" → ${battleArr.length} entries`);
-    if (battleArr.length) console.log('[PS99] Sample entry:', JSON.stringify(battleArr[0]));
+    if (usedKey) state.war.battleId = usedKey;
 
     const battlePoints = {};
     battleArr.forEach(c => {
@@ -711,17 +711,16 @@ async function importClanByName(clanName, battleTotal = 0) {
     const resolvedTotal = Math.max(playerSum, battleTotal);
 
     // Debug info — stored so renderClanDetail can display it
-    const sampleEntry   = battleArr[0] ? JSON.stringify(battleArr[0]) : 'none';
-    const sampleMember  = validMembers[0] ? JSON.stringify(validMembers[0]) : 'none';
-    const sampleBPKey   = Object.keys(battlePoints)[0] ?? 'none';
+    const sampleEntry  = battleArr[0] ? JSON.stringify(battleArr[0]) : 'none';
+    const sampleMember = validMembers[0] ? JSON.stringify(validMembers[0]) : 'none';
     const _debug = {
-        clanDataKeys:  Object.keys(clanData).join(', '),
-        contribKeys:   Object.keys(contrib).join(', ') || 'EMPTY',
+        clanDataKeys: Object.keys(clanData).join(', '),
+        battlesKeys:  Object.keys(battles).join(', ') || 'EMPTY',
+        contribKeys:  Object.keys(contrib).join(', ') || 'EMPTY',
         usedKey,
-        entryCount:    battleArr.length,
+        entryCount:   battleArr.length,
         sampleEntry,
         sampleMember,
-        sampleBPKey,
         playerSum,
     };
 
