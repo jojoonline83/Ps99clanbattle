@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PS99 Clan Battle Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+    <div class="header-content">
+        <div class="logo">
+            <span class="logo-icon">⚔️</span>
+            <h1>PS99 Clan Battle Tracker</h1>
+        </div>
+        <nav>
+            <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+            <button class="nav-btn" data-view="compare">Compare</button>
+            <button class="nav-btn" data-view="manage">Manage War</button>
+        </nav>
+    </div>
+</header>
+
+<main>
+
+    <!-- ── Dashboard ── -->
+    <div id="dashboard-view" class="view active">
+        <div class="war-info-bar">
+            <div>
+                <div class="war-title" id="current-war-title">No Active War</div>
+                <div class="war-dates" id="current-war-dates"></div>
+            </div>
+            <div id="war-status-badge"></div>
+        </div>
+        <div class="clans-grid" id="clans-grid"></div>
+    </div>
+
+    <!-- ── Clan Detail ── -->
+    <div id="clan-detail-view" class="view">
+        <div class="detail-top-bar">
+            <button class="back-btn" id="back-btn">← Back to Dashboard</button>
+            <button class="btn-primary" id="add-player-btn">+ Add Player</button>
+        </div>
+        <div class="clan-detail-header" id="clan-detail-header">
+            <div class="clan-detail-title-row">
+                <div class="clan-detail-color-bar" id="clan-detail-color-bar"></div>
+                <div>
+                    <h2 id="clan-detail-name"></h2>
+                    <div id="clan-detail-tag" class="clan-detail-tag-line"></div>
+                </div>
+            </div>
+            <div class="clan-detail-stats">
+                <div class="stat-box">
+                    <span class="stat-label">Total Points</span>
+                    <span class="stat-value" id="clan-detail-points"></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Players</span>
+                    <span class="stat-value" id="clan-detail-players"></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">War Rank</span>
+                    <span class="stat-value" id="clan-detail-rank"></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Avg / Player</span>
+                    <span class="stat-value" id="clan-detail-avg"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-toolbar">
+            <input type="text" id="player-search" class="search-input" placeholder="Search players…">
+            <select id="sort-select" class="sort-select">
+                <option value="points-desc">Points ↓</option>
+                <option value="points-asc">Points ↑</option>
+                <option value="name-asc">Name A–Z</option>
+                <option value="contribution-desc">Contribution ↓</option>
+            </select>
+        </div>
+
+        <div class="players-table-container">
+            <table class="players-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Player</th>
+                        <th>Points</th>
+                        <th>Contribution</th>
+                        <th>Progress</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="players-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Compare ── -->
+    <div id="compare-view" class="view">
+        <h2 class="view-title">Side-by-Side Clan Comparison</h2>
+        <div class="compare-selectors">
+            <div class="selector-box">
+                <label>Clan A</label>
+                <select id="compare-clan-1" class="clan-select"></select>
+            </div>
+            <div class="vs-badge">VS</div>
+            <div class="selector-box">
+                <label>Clan B</label>
+                <select id="compare-clan-2" class="clan-select"></select>
+            </div>
+        </div>
+        <button class="btn-primary compare-btn" id="do-compare-btn">Compare Clans</button>
+        <div id="compare-results" class="compare-results"></div>
+    </div>
+
+    <!-- ── Manage War ── -->
+    <div id="manage-view" class="view">
+        <h2 class="view-title">Manage War</h2>
+        <div class="manage-grid">
+
+            <div class="manage-card">
+                <h3>War Settings</h3>
+                <form id="war-form">
+                    <div class="form-group">
+                        <label>War Name</label>
+                        <input type="text" id="war-name" placeholder="e.g. War #215">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" id="war-start">
+                        </div>
+                        <div class="form-group">
+                            <label>End Date</label>
+                            <input type="date" id="war-end">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary">Save War Info</button>
+                </form>
+            </div>
+
+            <div class="manage-card">
+                <h3>Add New Clan</h3>
+                <form id="add-clan-form">
+                    <div class="form-group">
+                        <label>Clan Name</label>
+                        <input type="text" id="new-clan-name" placeholder="Clan Name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Clan Tag <span class="optional">(optional)</span></label>
+                        <input type="text" id="new-clan-tag" placeholder="e.g. [GODS]" maxlength="12">
+                    </div>
+                    <div class="form-group">
+                        <label>Color</label>
+                        <div class="color-options" id="color-options"></div>
+                    </div>
+                    <button type="submit" class="btn-primary">Add Clan</button>
+                </form>
+            </div>
+
+            <div class="manage-card full-width">
+                <div class="manage-card-header">
+                    <h3>Clans in This War</h3>
+                    <span id="clan-count-badge" class="count-badge">0</span>
+                </div>
+                <div id="manage-clans-list" class="manage-clans-list"></div>
+            </div>
+
+        </div>
+    </div>
+
+</main>
+
+<!-- ── Player Modal ── -->
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modal-title">Add Player</h3>
+            <button class="modal-close" id="modal-close">×</button>
+        </div>
+        <form id="player-form">
+            <div class="form-group">
+                <label>Roblox Username</label>
+                <input type="text" id="player-username" placeholder="Username" required>
+            </div>
+            <div class="form-group">
+                <label>Points / Damage</label>
+                <input type="number" id="player-points" placeholder="0" min="0" required>
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select id="player-role">
+                    <option value="Member">Member</option>
+                    <option value="Officer">Officer</option>
+                    <option value="Co-Leader">Co-Leader</option>
+                    <option value="Leader">Leader</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="modal-cancel">Cancel</button>
+                <button type="submit" class="btn-primary" id="modal-submit">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── Confirm Dialog ── -->
+<div class="modal-overlay" id="confirm-overlay">
+    <div class="modal confirm-modal">
+        <div class="modal-header">
+            <h3 id="confirm-title">Confirm</h3>
+        </div>
+        <p id="confirm-message" style="color:var(--text-secondary);margin-bottom:24px;font-size:14px"></p>
+        <div class="modal-actions">
+            <button class="btn-secondary" id="confirm-cancel">Cancel</button>
+            <button class="btn-danger" id="confirm-ok">Delete</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
