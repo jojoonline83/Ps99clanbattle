@@ -5,7 +5,7 @@
 'use strict';
 
 // Change tab title so we can confirm which JS version is running
-document.title = 'PS99 Battle Tracker [v29]';
+document.title = 'PS99 Battle Tracker [v30]';
 
 // ── Constants ──────────────────────────────
 const STORAGE_KEY = 'ps99_tracker_v1';
@@ -967,18 +967,47 @@ async function fastRefreshClan(clanId) {
     const raw = await apiFetch(`/clan/${encodeURIComponent(clan.name)}`);
     if (raw.status !== 'ok' || !raw.data) return;
 
-    const clanData  = raw.data;
-    const battles   = clanData.Battles || {};
-    const lastKey   = Object.keys(battles).pop();
-    const battleObj = (lastKey && battles[lastKey]) || {};
-    const arr       = battleObj.PointContributions || battleObj.pointContributions || [];
+    const clanData = raw.data;
+    const battles  = clanData.Battles    || {};
+    const contrib  = clanData.Contribution || {};
+
+    // Mirror importClanByName: last key = current battle, fall back to stored battleId
+    const battleKeys     = Object.keys(battles);
+    const lastBattleKey  = battleKeys[battleKeys.length - 1];
+    const activeBattleId = lastBattleKey || state.war.battleId || '';
+    if (activeBattleId) state.war.battleId = activeBattleId;
+
+    const battleObj = battles[activeBattleId] || {};
+
+    function normalizeContrib(val) {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'object') {
+            return Object.entries(val).map(([uid, v]) => ({
+                UserID: Number(uid),
+                Points: typeof v === 'object'
+                    ? (v.Points ?? v.points ?? v.Damage ?? v.damage ?? v.Score ?? v.score ?? 0)
+                    : Number(v),
+            }));
+        }
+        return [];
+    }
+    function validContrib(val) {
+        return normalizeContrib(val).filter(c => Number(c.UserID ?? c.userId ?? c.id ?? 0) > 0);
+    }
+
+    const arr = battleObj.PointContributions || battleObj.pointContributions
+             || validContrib(contrib[activeBattleId]) || [];
 
     const bpts = {};
     arr.forEach(c => {
         const id  = String(c.UserID ?? c.userId ?? c.Id ?? c.ID ?? c.id ?? '');
-        const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? 0;
+        const pts = c.Points ?? c.points ?? c.Damage ?? c.damage ?? c.Score ?? c.score ?? 0;
         if (id && id !== '0' && id !== 'null') bpts[id] = pts;
     });
+
+    // Don't take a snapshot if we got no point data — would corrupt delta tracking
+    if (!Object.keys(bpts).length) return;
 
     const now  = Date.now();
     const snap = { ts: now, pts: {} };
@@ -988,7 +1017,8 @@ async function fastRefreshClan(clanId) {
         snap.pts[p.userId] = newPts;
     });
 
-    if (battleObj.Points) clan.battleTotal = Math.max(Number(battleObj.Points), clan.battleTotal || 0);
+    // Always update battleTotal from API (not just when higher, so decreases are reflected too)
+    if (battleObj.Points != null) clan.battleTotal = Number(battleObj.Points);
 
     const prev = clan.snapshots?.length ? clan.snapshots[clan.snapshots.length - 1] : null;
     clan.prevSnapshot = prev;
