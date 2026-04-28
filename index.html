@@ -11,7 +11,7 @@
     <!-- Force reload if a newer version of app.js has been deployed -->
     <script>
     (function(){
-        var V = 30;
+        var V = 31;
         var k = '_ps99v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
@@ -35,7 +35,7 @@
             <button class="nav-btn" data-view="compare">Compare</button>
             <button class="nav-btn" data-view="manage">Manage War</button>
         </nav>
-        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v30</div>
+        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v31</div>
     </div>
 </header>
 
@@ -60,6 +60,7 @@
     <div id="clan-detail-view" class="view">
         <div class="detail-top-bar">
             <button class="back-btn" id="back-btn">← Back to Dashboard</button>
+            <button class="btn-refresh" id="detail-refresh-btn" title="Refresh points">🔄 Refresh</button>
         </div>
         <div class="clan-detail-header" id="clan-detail-header">
             <div class="clan-detail-title-row">
@@ -264,6 +265,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="app.js?v=30"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>
