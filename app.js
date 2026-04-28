@@ -5,7 +5,7 @@
 'use strict';
 
 // Change tab title so we can confirm which JS version is running
-document.title = 'PS99 Battle Tracker [v30]';
+document.title = 'PS99 Battle Tracker [v31]';
 
 // ── Constants ──────────────────────────────
 const STORAGE_KEY = 'ps99_tracker_v1';
@@ -138,14 +138,20 @@ function showClanDetail(clanId) {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('clan-detail-view').classList.add('active');
     const clan = getClan(clanId);
-    // Lazy-load players if not yet fetched
     if (clan && clan.players.length === 0 && clan.name) {
+        // No players yet — do full import
         renderClanDetail();
         importClanByName(clan.name, clan.battleTotal || 0)
             .then(() => renderClanDetail())
             .catch(() => renderClanDetail());
     } else {
         renderClanDetail();
+        // Auto-refresh points immediately when opening detail
+        if (clan && clan.players.length > 0) {
+            fastRefreshClan(clanId)
+                .then(() => renderClanDetail())
+                .catch(() => {});
+        }
     }
 }
 
@@ -1038,6 +1044,24 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
 // Back button
 document.getElementById('back-btn').addEventListener('click', () => switchView('dashboard'));
+
+// Clan detail refresh button
+document.getElementById('detail-refresh-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('detail-refresh-btn');
+    if (!ui.currentClanId) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Refreshing…';
+    try {
+        await fastRefreshClan(ui.currentClanId);
+        renderClanDetail();
+        toast('Points refreshed', 'success');
+    } catch (err) {
+        toast(err.message || 'Refresh failed', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh';
+    }
+});
 
 // Player search & sort (live filter)
 document.getElementById('player-search').addEventListener('input', () => {
