@@ -11,7 +11,7 @@
     <!-- Force reload if a newer version of app.js has been deployed -->
     <script>
     (function(){
-        var V = 35;
+        var V = 36;
         var k = '_ps99v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
@@ -36,7 +36,7 @@
             <button class="nav-btn" data-view="manage">Manage War</button>
             <button class="nav-btn" data-view="monitor">Monitor</button>
         </nav>
-        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v35</div>
+        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v36</div>
     </div>
 </header>
 
@@ -173,13 +173,21 @@
                         <input type="url" id="mon-ps-link" placeholder="https://www.roblox.com/games/8737899170/...?privateServerLinkCode=...">
                     </div>
                     <div class="form-group">
-                        <label>Check Interval</label>
+                        <label>Check Interval <span class="optional">(how often to refresh points)</span></label>
                         <select id="mon-interval">
                             <option value="30">Every 30 seconds</option>
                             <option value="45" selected>Every 45 seconds</option>
                             <option value="60">Every 1 minute</option>
                             <option value="120">Every 2 minutes</option>
                             <option value="300">Every 5 minutes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Discord Alert After <span class="optional">(no point increase for…)</span></label>
+                        <select id="mon-alert-threshold">
+                            <option value="3">3 minutes</option>
+                            <option value="5" selected>5 minutes</option>
+                            <option value="10">10 minutes</option>
                         </select>
                     </div>
                     <div class="form-group">

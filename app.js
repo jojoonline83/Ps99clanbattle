@@ -1210,10 +1210,11 @@ setInterval(async () => {
 const MONITOR_KEY = 'ps99_monitor_v1';
 
 let monitorState = {
-    webhook:           '',
-    intervalSec:       45,
-    privateServerLink: '',
-    players:           [],
+    webhook:             '',
+    intervalSec:         45,
+    alertThresholdMin:   5,
+    privateServerLink:   '',
+    players:             [],
 };
 
 let monitorRunning = false;
@@ -1247,7 +1248,8 @@ function getStatusInfo(status) {
 
 function renderMonitor() {
     document.getElementById('mon-webhook').value  = monitorState.webhook           || '';
-    document.getElementById('mon-interval').value = monitorState.intervalSec       || 45;
+    document.getElementById('mon-interval').value       = monitorState.intervalSec      || 45;
+    document.getElementById('mon-alert-threshold').value = monitorState.alertThresholdMin || 5;
     document.getElementById('mon-ps-link').value  = monitorState.privateServerLink || '';
     const nameInput = document.getElementById('mon-clan-name');
     if (nameInput && monitorState.lastClanName) nameInput.value = monitorState.lastClanName;
@@ -1507,7 +1509,7 @@ async function runMonitorCycle() {
         await refreshClanPoints();
 
         // 5 minutes: biggamesapi.io updates every few minutes, shorter = false positives
-        const inactiveMs = 5 * 60 * 1000;
+        const inactiveMs = (monitorState.alertThresholdMin || 5) * 60 * 1000;
 
         for (const player of players) {
             player.lastChecked = Date.now();
@@ -1627,7 +1629,8 @@ function clearMonitorLog() {
 document.getElementById('mon-settings-form')?.addEventListener('submit', e => {
     e.preventDefault();
     monitorState.webhook           = document.getElementById('mon-webhook').value.trim();
-    monitorState.intervalSec       = Number(document.getElementById('mon-interval').value) || 45;
+    monitorState.intervalSec       = Number(document.getElementById('mon-interval').value)        || 45;
+    monitorState.alertThresholdMin = Number(document.getElementById('mon-alert-threshold').value) || 5;
     monitorState.privateServerLink = document.getElementById('mon-ps-link').value.trim();
     const cn = document.getElementById('mon-clan-name');
     if (cn && cn.value.trim()) monitorState.lastClanName = cn.value.trim();
