@@ -117,6 +117,7 @@ function switchView(name) {
     if (name === 'dashboard') renderDashboard();
     if (name === 'compare')   renderCompareInit();
     if (name === 'manage')    renderManage();
+    if (name === 'monitor')   renderMonitor();
 }
 
 function showClanDetail(clanId) {
@@ -626,6 +627,365 @@ document.getElementById('add-clan-form').addEventListener('submit', e => {
 // Compare button
 document.getElementById('do-compare-btn').addEventListener('click', doCompare);
 
+// ── Monitor ────────────────────────────────
+
+const MONITOR_KEY      = 'ps99_monitor_v1';
+const PS99_ROOT_PLACE  = 8737899170;
+
+let monitorState = {
+    webhook:           '',
+    intervalSec:       60,
+    privateServerLink: '',
+    players:           [],
+};
+
+let monitorRunning = false;
+let monitorTimer   = null;
+let monitorLog     = [];
+
+function saveMonitor() {
+    try { localStorage.setItem(MONITOR_KEY, JSON.stringify(monitorState)); } catch (_) {}
+}
+
+function loadMonitor() {
+    try {
+        const raw = localStorage.getItem(MONITOR_KEY);
+        if (raw) {
+            const saved = JSON.parse(raw);
+            monitorState = { ...monitorState, ...saved };
+            monitorState.players.forEach(p => { p.status = 'unknown'; p.lastChecked = null; });
+        }
+    } catch (_) {}
+}
+
+function getStatusInfo(status) {
+    switch (status) {
+        case 'inGame':       return { cls: 'ms-ingame',       label: 'In PS99' };
+        case 'online':       return { cls: 'ms-online',       label: 'Online' };
+        case 'offline':      return { cls: 'ms-offline',      label: 'Offline' };
+        case 'disconnected': return { cls: 'ms-disconnected', label: 'Disconnected!' };
+        case 'checking':     return { cls: 'ms-checking',     label: 'Checking…' };
+        default:             return { cls: 'ms-unknown',      label: 'Unknown' };
+    }
+}
+
+function renderMonitor() {
+    document.getElementById('mon-webhook').value    = monitorState.webhook           || '';
+    document.getElementById('mon-interval').value  = monitorState.intervalSec       || 60;
+    document.getElementById('mon-ps-link').value   = monitorState.privateServerLink || '';
+    renderMonitorPlayers();
+    renderMonitorLog();
+    updateMonitorBtn();
+}
+
+function renderMonitorPlayers() {
+    const list = document.getElementById('mon-players-list');
+    document.getElementById('mon-player-count').textContent = monitorState.players.length;
+
+    if (monitorState.players.length === 0) {
+        list.innerHTML = '<div class="mon-empty">No players added yet. Use the form to add a Roblox username or user ID.</div>';
+        return;
+    }
+
+    list.innerHTML = monitorState.players.map(p => {
+        const si          = getStatusInfo(p.status);
+        const lastChecked = p.lastChecked ? new Date(p.lastChecked).toLocaleTimeString() : '—';
+        const name        = esc(p.nickname || p.username);
+        const sub         = p.nickname ? `<span class="mon-player-sub">@${esc(p.username)}</span>` : '';
+        return `
+          <div class="mon-player-row" id="mon-row-${p.id}">
+            <span class="mon-dot ${si.cls}"></span>
+            <div class="mon-player-info">
+              <span class="mon-player-name">${name}</span>${sub}
+            </div>
+            <span class="mon-badge ${si.cls}">${si.label}</span>
+            <span class="mon-time">${lastChecked}</span>
+            <button class="btn-icon del" onclick="removeMonitorPlayer('${p.id}')" title="Remove">🗑️</button>
+          </div>`;
+    }).join('');
+}
+
+function renderMonitorLog() {
+    const el = document.getElementById('mon-log');
+    if (monitorLog.length === 0) {
+        el.innerHTML = '<div class="mon-log-empty">No activity yet.</div>';
+        return;
+    }
+    el.innerHTML = [...monitorLog].slice(-60).reverse().map(e => `
+      <div class="mon-log-entry mon-log-${e.type}">
+        <span class="mon-log-time">${e.time}</span>
+        <span>${esc(e.msg)}</span>
+      </div>`).join('');
+}
+
+function addLog(msg, type = 'info') {
+    monitorLog.push({ time: new Date().toLocaleTimeString(), msg, type });
+    if (monitorLog.length > 100) monitorLog.shift();
+    const logEl = document.getElementById('mon-log');
+    if (logEl) renderMonitorLog();
+}
+
+function updateMonitorBtn() {
+    const btn  = document.getElementById('mon-toggle-btn');
+    const ind  = document.getElementById('mon-global-indicator');
+    const txt  = document.getElementById('mon-global-text');
+    if (monitorRunning) {
+        btn.textContent = '⏹ Stop Monitoring';
+        btn.className   = 'btn-danger';
+        ind.className   = 'mon-global-status mon-global-running';
+        txt.textContent = 'Monitoring';
+    } else {
+        btn.textContent = '▶ Start Monitoring';
+        btn.className   = 'btn-primary';
+        ind.className   = 'mon-global-status mon-global-idle';
+        txt.textContent = 'Idle';
+    }
+}
+
+// ── Roblox API ─────────────────────────────
+
+async function lookupRobloxUser(input) {
+    const trimmed = input.trim();
+    if (/^\d+$/.test(trimmed)) {
+        const res = await fetch(`https://users.roblox.com/v1/users/${trimmed}`);
+        if (!res.ok) throw new Error('User ID not found');
+        const data = await res.json();
+        if (data.errors) throw new Error('User ID not found');
+        return { userId: data.id, username: data.name };
+    }
+    const res = await fetch('https://users.roblox.com/v1/usernames/users', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ usernames: [trimmed], excludeBannedUsers: false }),
+    });
+    if (!res.ok) throw new Error(`Roblox API error ${res.status}`);
+    const data = await res.json();
+    if (!data.data?.length) throw new Error('Username not found');
+    return { userId: data.data[0].id, username: data.data[0].name };
+}
+
+async function fetchPresences(userIds) {
+    const res = await fetch('https://presence.roblox.com/v1/presence/users', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ userIds }),
+    });
+    if (!res.ok) throw new Error(`Presence API error ${res.status}`);
+    const data = await res.json();
+    return data.userPresences || [];
+}
+
+// ── Discord ────────────────────────────────
+
+async function sendDiscordAlert(player, newStatus) {
+    if (!monitorState.webhook) return;
+    const psLink    = monitorState.privateServerLink;
+    const now       = Math.floor(Date.now() / 1000);
+    const label     = newStatus === 'offline' ? 'Offline' : 'Left PS99';
+    const display   = player.nickname || player.username;
+    const fields    = [
+        { name: 'Player', value: `**${display}**${player.nickname ? ` (@${player.username})` : ''}`, inline: true },
+        { name: 'Status', value: label,                    inline: true },
+        { name: 'Time',   value: `<t:${now}:T>`,           inline: true },
+    ];
+    if (psLink) fields.push({ name: 'Rejoin Private Server', value: psLink, inline: false });
+
+    const payload = {
+        username: 'PS99 Monitor',
+        embeds: [{
+            title:       `⚠️ ${display} disconnected from PS99!`,
+            description: `**${player.username}** has left the game or disconnected from the private server.`,
+            color:       0xEF4444,
+            fields,
+            footer:    { text: 'PS99 Clan Battle Tracker • Server Monitor' },
+            timestamp: new Date().toISOString(),
+        }],
+    };
+
+    try {
+        const r = await fetch(monitorState.webhook, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(payload),
+        });
+        if (!r.ok && r.status !== 204) addLog(`Discord error ${r.status}`, 'error');
+    } catch (e) {
+        addLog(`Discord failed: ${e.message}`, 'error');
+    }
+}
+
+async function testWebhook() {
+    const url = document.getElementById('mon-webhook').value.trim();
+    if (!url) { toast('Enter a webhook URL first', 'error'); return; }
+    try {
+        const r = await fetch(url, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+                username: 'PS99 Monitor',
+                embeds: [{
+                    title:       '✅ Webhook connected!',
+                    description: 'PS99 connection monitor will send alerts here when a player disconnects.',
+                    color:       0x10B981,
+                    footer:      { text: 'PS99 Clan Battle Tracker' },
+                }],
+            }),
+        });
+        if (r.ok || r.status === 204) {
+            toast('Test message sent!', 'success');
+            addLog('Discord webhook test successful', 'success');
+        } else {
+            toast(`Webhook error: ${r.status}`, 'error');
+        }
+    } catch (e) {
+        toast('Webhook failed: ' + e.message, 'error');
+    }
+}
+
+// ── Monitor Loop ───────────────────────────
+
+async function runMonitorCycle() {
+    const players = monitorState.players.filter(p => p.userId);
+    if (!players.length) return;
+
+    try {
+        const presences = await fetchPresences(players.map(p => p.userId));
+
+        for (const presence of presences) {
+            const player = players.find(p => p.userId === presence.userId);
+            if (!player) continue;
+
+            const prevStatus = player.status;
+            let   newStatus;
+
+            const inPS99 = presence.userPresenceType === 2 &&
+                           presence.rootPlaceId === PS99_ROOT_PLACE;
+
+            if      (inPS99)                           newStatus = 'inGame';
+            else if (presence.userPresenceType >= 1)   newStatus = 'online';
+            else                                       newStatus = 'offline';
+
+            player.lastChecked = Date.now();
+
+            if (prevStatus === 'inGame' && newStatus !== 'inGame') {
+                player.status = 'disconnected';
+                addLog(`⚠️ ${player.nickname || player.username} disconnected from PS99!`, 'alert');
+                await sendDiscordAlert(player, newStatus);
+                toast(`${player.nickname || player.username} disconnected!`, 'error');
+                setTimeout(() => {
+                    player.status = newStatus;
+                    renderMonitorPlayers();
+                }, 5000);
+            } else {
+                if (newStatus === 'inGame' && prevStatus !== 'inGame' &&
+                    prevStatus !== 'unknown' && prevStatus !== undefined) {
+                    addLog(`✅ ${player.nickname || player.username} joined PS99`, 'success');
+                }
+                player.status = newStatus;
+            }
+        }
+
+        saveMonitor();
+        renderMonitorPlayers();
+    } catch (e) {
+        addLog(`Check failed: ${e.message}`, 'error');
+    }
+}
+
+function startMonitoring() {
+    if (!monitorState.players.length) { toast('Add players to monitor first', 'error'); return; }
+    if (!monitorState.webhook)        { toast('Set a Discord webhook URL first', 'error'); return; }
+    monitorRunning = true;
+    updateMonitorBtn();
+    addLog('Monitoring started', 'success');
+    runMonitorCycle();
+    monitorTimer = setInterval(runMonitorCycle, (monitorState.intervalSec || 60) * 1000);
+}
+
+function stopMonitoring() {
+    monitorRunning = false;
+    clearInterval(monitorTimer);
+    monitorTimer = null;
+    updateMonitorBtn();
+    addLog('Monitoring stopped', 'info');
+    monitorState.players.forEach(p => { p.status = 'unknown'; });
+    renderMonitorPlayers();
+}
+
+function toggleMonitoring() {
+    if (monitorRunning) stopMonitoring();
+    else                startMonitoring();
+}
+
+function removeMonitorPlayer(id) {
+    const p = monitorState.players.find(x => x.id === id);
+    if (p) addLog(`Removed ${p.nickname || p.username}`, 'info');
+    monitorState.players = monitorState.players.filter(x => x.id !== id);
+    saveMonitor();
+    renderMonitorPlayers();
+    if (!monitorState.players.length && monitorRunning) stopMonitoring();
+}
+
+function clearMonitorLog() {
+    monitorLog = [];
+    renderMonitorLog();
+}
+
+// ── Monitor Event Listeners ────────────────
+
+document.getElementById('mon-settings-form').addEventListener('submit', e => {
+    e.preventDefault();
+    monitorState.webhook           = document.getElementById('mon-webhook').value.trim();
+    monitorState.intervalSec       = Number(document.getElementById('mon-interval').value) || 60;
+    monitorState.privateServerLink = document.getElementById('mon-ps-link').value.trim();
+    saveMonitor();
+    toast('Settings saved');
+    if (monitorRunning) {
+        clearInterval(monitorTimer);
+        monitorTimer = setInterval(runMonitorCycle, monitorState.intervalSec * 1000);
+    }
+});
+
+document.getElementById('mon-add-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const input    = document.getElementById('mon-add-username').value.trim();
+    const nickname = document.getElementById('mon-add-nickname').value.trim();
+    if (!input) return;
+
+    const btn = document.getElementById('mon-add-btn');
+    btn.textContent = 'Looking up…';
+    btn.disabled    = true;
+
+    try {
+        const { userId, username } = await lookupRobloxUser(input);
+
+        if (monitorState.players.some(p => p.userId === userId)) {
+            toast('Player already in monitor list', 'error');
+            return;
+        }
+
+        monitorState.players.push({
+            id: uid(), userId, username,
+            nickname:    nickname || '',
+            status:      'unknown',
+            lastChecked: null,
+        });
+
+        document.getElementById('mon-add-username').value = '';
+        document.getElementById('mon-add-nickname').value = '';
+        saveMonitor();
+        renderMonitorPlayers();
+        addLog(`Added ${nickname || username} (@${username}, ID: ${userId})`, 'info');
+        toast(`${nickname || username} added`);
+    } catch (err) {
+        toast(`Error: ${err.message}`, 'error');
+    } finally {
+        btn.textContent = '+ Add Player';
+        btn.disabled    = false;
+    }
+});
+
 // ── Bootstrap ──────────────────────────────
 load();
+loadMonitor();
 renderDashboard();
