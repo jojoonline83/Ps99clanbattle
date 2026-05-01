@@ -5,7 +5,7 @@
 'use strict';
 
 // Change tab title so we can confirm which JS version is running
-document.title = 'PS99 Battle Tracker [v31]';
+document.title = 'PS99 Battle Tracker [v32]';
 
 // ── Constants ──────────────────────────────
 const STORAGE_KEY = 'ps99_tracker_v1';
@@ -155,6 +155,13 @@ function showClanDetail(clanId) {
     }
 }
 
+function toggleCardPlayers(btn) {
+    const list = btn.nextElementSibling;
+    const open = list.style.display !== 'none';
+    list.style.display = open ? 'none' : 'block';
+    btn.textContent = open ? 'Players ▼' : 'Players ▲';
+}
+
 // ── Dashboard ──────────────────────────────
 function renderDashboardLoading() {
     document.getElementById('current-war-title').textContent = 'PS99 Clan Battle';
@@ -233,6 +240,16 @@ function renderDashboard() {
         }
         const cardDeltaText = cardDelta !== null ? `+${fmt(cardDelta)} since refresh` : '';
 
+        const sortedPlayers = [...clan.players].sort((a, b) => b.points - a.points);
+        const playerRows = sortedPlayers.length
+            ? sortedPlayers.map((p, i) => `
+                <div class="card-player-row">
+                  <span class="card-player-rank">${i + 1}</span>
+                  <span class="card-player-name">${esc(p.username)}</span>
+                  <span class="card-player-pts" style="color:${clan.color}">${fmt(p.points)}</span>
+                </div>`).join('')
+            : '<div style="color:var(--text-muted);font-size:12px;padding:6px 0">No player data yet</div>';
+
         return `
           <div class="clan-card" style="--clan-color:${clan.color}"
                onclick="showClanDetail('${clan.id}')">
@@ -256,6 +273,13 @@ function renderDashboard() {
               <span>${clan.players.length} player${clan.players.length !== 1 ? 's' : ''}</span>
               <span>${topPlayer ? '🏆 ' + esc(topPlayer.username) : 'Click to view'}</span>
             </div>
+            ${clan.players.length ? `
+            <button class="card-players-toggle" onclick="event.stopPropagation();toggleCardPlayers(this)">
+              Players ▼
+            </button>
+            <div class="card-players-list" style="display:none">
+              ${playerRows}
+            </div>` : ''}
             <button class="clan-refresh-btn" onclick="event.stopPropagation();refreshClan('${clan.id}')" title="Refresh from API">🔄</button>
           </div>`;
     }).join('');
