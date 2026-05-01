@@ -853,18 +853,15 @@ async function runMonitorCycle() {
             const prevStatus = player.status;
             let   newStatus;
 
-            const inPS99   = presence.userPresenceType === 2 && presence.rootPlaceId === PS99_ROOT_PLACE;
-            const inServer = inPS99 && monitorState.targetGameId && presence.gameId === monitorState.targetGameId;
-
-            if      (inServer)                         newStatus = 'inServer';
-            else if (inPS99)                           newStatus = 'inGame';
-            else if (presence.userPresenceType >= 1)   newStatus = 'online';
+            if      (presence.userPresenceType === 2)  newStatus = 'inServer';
+            else if (presence.userPresenceType === 1)  newStatus = 'online';
             else                                       newStatus = 'offline';
 
             player.lastChecked = Date.now();
 
             const wasInServer = prevStatus === 'inServer';
             const leftServer  = wasInServer && newStatus !== 'inServer';
+
 
             if (leftServer) {
                 player.status = 'disconnected';
@@ -933,17 +930,13 @@ async function detectServer() {
     toast('Detecting server…', 'info');
     try {
         const presences = await fetchPresences(players.map(p => p.userId));
-        const found = presences.find(p =>
-            p.userPresenceType === 2 &&
-            p.rootPlaceId === PS99_ROOT_PLACE &&
-            p.gameId
-        );
+        const found = presences.find(p => p.userPresenceType === 2);
         if (!found) {
-            toast('No monitored player is currently in PS99', 'error');
-            addLog('Detect server failed — no player found in PS99', 'error');
+            toast('No monitored player is currently in a game', 'error');
+            addLog('Detect server failed — no player found in-game', 'error');
             return;
         }
-        monitorState.targetGameId = found.gameId;
+        monitorState.targetGameId = found.gameId || 'detected';
         saveMonitor();
         const sid = document.getElementById('mon-server-id');
         sid.textContent = `Captured: ${found.gameId.substring(0, 12)}…`;
