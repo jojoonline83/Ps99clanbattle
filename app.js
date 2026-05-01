@@ -767,7 +767,8 @@ async function fetchPresences(userIds) {
     if (!res.ok) throw new Error(`Presence API error ${res.status}`);
     const data = await res.json();
     data.userPresences?.forEach(p => {
-        addLog(`Presence: ${JSON.stringify({ id: p.userId, type: p.userPresenceType, place: p.placeId ?? null, game: p.gameId ?? null })}`, 'info');
+        const lastOnline = p.lastOnline ? new Date(p.lastOnline).toLocaleTimeString() : 'N/A';
+        addLog(`Presence: ${JSON.stringify({ id: p.userId, type: p.userPresenceType, place: p.placeId ?? null, game: p.gameId ?? null, lastOnline })}`, 'info');
     });
     return data.userPresences || [];
 }
@@ -855,14 +856,19 @@ async function runMonitorCycle() {
             const prevStatus = player.status;
             let   newStatus;
 
-            if      (presence.userPresenceType === 2 && presence.gameId)  newStatus = 'inServer';
-            else if (presence.userPresenceType === 2 || presence.userPresenceType === 1)  newStatus = 'online';
-            else                                                                          newStatus = 'offline';
+            if      (presence.userPresenceType === 2)  newStatus = 'inServer';
+            else if (presence.userPresenceType === 1)  newStatus = 'online';
+            else                                       newStatus = 'offline';
 
             player.lastChecked = Date.now();
 
+            const currentLastOnline = presence.lastOnline ? new Date(presence.lastOnline).getTime() : null;
+            const prevLastOnline = player.lastOnlineTimestamp || null;
+            const lastOnlineChanged = currentLastOnline && prevLastOnline && currentLastOnline > prevLastOnline;
+
             const wasInServer = prevStatus === 'inServer';
-            const leftServer  = wasInServer && newStatus !== 'inServer';
+            const stalePresence = wasInServer && newStatus === 'inServer' && prevLastOnline && !lastOnlineChanged;
+            const leftServer  = wasInServer && (newStatus !== 'inServer' || stalePresence);
 
 
             if (leftServer) {
@@ -881,6 +887,8 @@ async function runMonitorCycle() {
                 }
                 player.status = newStatus;
             }
+
+            if (currentLastOnline) player.lastOnlineTimestamp = currentLastOnline;
         }
 
         saveMonitor();
