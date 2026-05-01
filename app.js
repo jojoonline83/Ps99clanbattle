@@ -744,7 +744,7 @@ function updateMonitorBtn() {
 
 // ── Roblox API ─────────────────────────────
 
-const PROXY = 'https://corsproxy.io/?url=';
+const PROXY = 'https://corsproxy.io/?';
 
 async function robloxGet(url) {
     const res = await fetch(PROXY + encodeURIComponent(url));
@@ -755,8 +755,11 @@ async function robloxGet(url) {
 async function robloxPost(url, body) {
     const res = await fetch(PROXY + encodeURIComponent(url), {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
+        headers: {
+            'Content-Type': 'application/json',
+            'x-requested-with': 'XMLHttpRequest',
+        },
+        body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`API error ${res.status}`);
     return res.json();
