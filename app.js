@@ -744,34 +744,39 @@ function updateMonitorBtn() {
 
 // ── Roblox API ─────────────────────────────
 
+const PROXY = 'https://corsproxy.io/?url=';
+
+async function robloxGet(url) {
+    const res = await fetch(PROXY + encodeURIComponent(url));
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+    return res.json();
+}
+
+async function robloxPost(url, body) {
+    const res = await fetch(PROXY + encodeURIComponent(url), {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+    return res.json();
+}
+
 async function lookupRobloxUser(input) {
     const trimmed = input.trim();
     if (/^\d+$/.test(trimmed)) {
-        const res = await fetch(`https://users.roblox.com/v1/users/${trimmed}`);
-        if (!res.ok) throw new Error('User ID not found');
-        const data = await res.json();
-        if (data.errors) throw new Error('User ID not found');
+        const data = await robloxGet(`https://users.roblox.com/v1/users/${trimmed}`);
+        if (data.errors || !data.id) throw new Error('User ID not found');
         return { userId: data.id, username: data.name };
     }
-    const res = await fetch('https://users.roblox.com/v1/usernames/users', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ usernames: [trimmed], excludeBannedUsers: false }),
-    });
-    if (!res.ok) throw new Error(`Roblox API error ${res.status}`);
-    const data = await res.json();
+    const data = await robloxPost('https://users.roblox.com/v1/usernames/users',
+        { usernames: [trimmed], excludeBannedUsers: false });
     if (!data.data?.length) throw new Error('Username not found');
     return { userId: data.data[0].id, username: data.data[0].name };
 }
 
 async function fetchPresences(userIds) {
-    const res = await fetch('https://presence.roblox.com/v1/presence/users', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ userIds }),
-    });
-    if (!res.ok) throw new Error(`Presence API error ${res.status}`);
-    const data = await res.json();
+    const data = await robloxPost('https://presence.roblox.com/v1/presence/users', { userIds });
     return data.userPresences || [];
 }
 
