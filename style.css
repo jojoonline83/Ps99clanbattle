@@ -740,6 +740,13 @@ main {
 .mon-input-row input { flex: 1; min-width: 0; }
 .mon-test-btn  { flex-shrink: 0; white-space: nowrap; }
 
+.mon-cookie-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 5px;
+    line-height: 1.4;
+}
+
 .mon-note {
     margin-top: 16px;
     padding: 10px 14px;

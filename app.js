@@ -636,6 +636,7 @@ let monitorState = {
     webhook:           '',
     intervalSec:       60,
     privateServerLink: '',
+    robloSecurity:     '',
     players:           [],
 };
 
@@ -670,9 +671,10 @@ function getStatusInfo(status) {
 }
 
 function renderMonitor() {
-    document.getElementById('mon-webhook').value    = monitorState.webhook           || '';
-    document.getElementById('mon-interval').value  = monitorState.intervalSec       || 60;
-    document.getElementById('mon-ps-link').value   = monitorState.privateServerLink || '';
+    document.getElementById('mon-webhook').value      = monitorState.webhook           || '';
+    document.getElementById('mon-interval').value     = monitorState.intervalSec       || 60;
+    document.getElementById('mon-ps-link').value      = monitorState.privateServerLink || '';
+    document.getElementById('mon-roblo-cookie').value = monitorState.robloSecurity     || '';
     renderMonitorPlayers();
     renderMonitorLog();
     updateMonitorBtn();
@@ -747,13 +749,18 @@ function updateMonitorBtn() {
 const PROXY = 'https://corsproxy.io/?';
 
 async function fetchPresences(userIds) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (monitorState.robloSecurity) {
+        headers['Cookie'] = `.ROBLOSECURITY=${monitorState.robloSecurity}`;
+    }
     const res = await fetch(PROXY + encodeURIComponent('https://presence.roblox.com/v1/presence/users'), {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body:    JSON.stringify({ userIds }),
     });
     if (!res.ok) throw new Error(`Presence API error ${res.status}`);
     const data = await res.json();
+    addLog(`Presence raw: ${JSON.stringify(data.userPresences?.map(p => ({ id: p.userId, type: p.userPresenceType, place: p.rootPlaceId })))}`, 'info');
     return data.userPresences || [];
 }
 
@@ -920,6 +927,7 @@ document.getElementById('mon-settings-form').addEventListener('submit', e => {
     monitorState.webhook           = document.getElementById('mon-webhook').value.trim();
     monitorState.intervalSec       = Number(document.getElementById('mon-interval').value) || 60;
     monitorState.privateServerLink = document.getElementById('mon-ps-link').value.trim();
+    monitorState.robloSecurity     = document.getElementById('mon-roblo-cookie').value.trim();
     saveMonitor();
     toast('Settings saved');
     if (monitorRunning) {
