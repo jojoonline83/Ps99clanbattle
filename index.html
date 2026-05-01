@@ -3,24 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     <title>PS99 Clan Battle Tracker</title>
-    <link rel="stylesheet" href="style.css?v=13">
-    <!-- Force reload if a newer version of app.js has been deployed -->
-    <script>
-    (function(){
-        var V = 31;
-        var k = '_ps99v';
-        var stored = localStorage.getItem(k);
-        localStorage.setItem(k, V);
-        if (stored && stored !== String(V)) {
-            var url = location.href.split('?')[0] + '?nocache=' + V;
-            location.replace(url);
-        }
-    })();
-    </script>
+    <meta name="deploy" content="v2">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -34,8 +19,8 @@
             <button class="nav-btn active" data-view="dashboard">Dashboard</button>
             <button class="nav-btn" data-view="compare">Compare</button>
             <button class="nav-btn" data-view="manage">Manage War</button>
+            <button class="nav-btn" data-view="monitor">Monitor</button>
         </nav>
-        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v31</div>
     </div>
 </header>
 
@@ -45,22 +30,19 @@
     <div id="dashboard-view" class="view active">
         <div class="war-info-bar">
             <div>
-                <div class="war-title" id="current-war-title">PS99 Clan Battle</div>
+                <div class="war-title" id="current-war-title">No Active War</div>
                 <div class="war-dates" id="current-war-dates"></div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-                <div id="war-status-badge"></div>
-                <button class="btn-refresh" id="dashboard-refresh-btn" title="Refresh live data">🔄 Refresh</button>
-            </div>
+            <div id="war-status-badge"></div>
         </div>
-        <div id="clans-grid"></div>
+        <div class="clans-grid" id="clans-grid"></div>
     </div>
 
     <!-- ── Clan Detail ── -->
     <div id="clan-detail-view" class="view">
         <div class="detail-top-bar">
             <button class="back-btn" id="back-btn">← Back to Dashboard</button>
-            <button class="btn-refresh" id="detail-refresh-btn" title="Refresh points">🔄 Refresh</button>
+            <button class="btn-primary" id="add-player-btn">+ Add Player</button>
         </div>
         <div class="clan-detail-header" id="clan-detail-header">
             <div class="clan-detail-title-row">
@@ -84,16 +66,8 @@
                     <span class="stat-value" id="clan-detail-rank"></span>
                 </div>
                 <div class="stat-box">
-                    <span class="stat-label">Avg/Hr</span>
+                    <span class="stat-label">Avg / Player</span>
                     <span class="stat-value" id="clan-detail-avg"></span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Since Refresh</span>
-                    <span class="stat-value" id="clan-detail-delta"></span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Last 5m</span>
-                    <span class="stat-value" id="clan-detail-delta5m"></span>
                 </div>
             </div>
         </div>
@@ -115,6 +89,9 @@
                         <th>#</th>
                         <th>Player</th>
                         <th>Points</th>
+                        <th>Contribution</th>
+                        <th>Progress</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="players-tbody"></tbody>
@@ -138,6 +115,105 @@
         </div>
         <button class="btn-primary compare-btn" id="do-compare-btn">Compare Clans</button>
         <div id="compare-results" class="compare-results"></div>
+    </div>
+
+    <!-- ── Monitor ── -->
+    <div id="monitor-view" class="view">
+        <div class="mon-page-header">
+            <h2 class="view-title" style="margin-bottom:0">Server Monitor</h2>
+            <div class="mon-header-controls">
+                <div id="mon-global-indicator" class="mon-global-status mon-global-idle">
+                    <span class="mon-global-dot"></span>
+                    <span id="mon-global-text">Idle</span>
+                </div>
+                <button id="mon-toggle-btn" class="btn-primary" onclick="toggleMonitoring()">&#9654; Start Monitoring</button>
+                <button class="btn-secondary" onclick="checkNow()">Check Now</button>
+                <button class="btn-secondary" onclick="testDisconnectAlert()">Test Alert</button>
+            </div>
+        </div>
+
+        <div class="monitor-grid">
+
+            <!-- Settings -->
+            <div class="manage-card">
+                <h3>Settings</h3>
+                <form id="mon-settings-form">
+                    <div class="form-group">
+                        <label>Discord Webhook URL</label>
+                        <div class="mon-input-row">
+                            <input type="url" id="mon-webhook" placeholder="https://discord.com/api/webhooks/...">
+                            <button type="button" class="btn-secondary mon-test-btn" onclick="testWebhook()">Test</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>PS99 Private Server Link <span class="optional">(rejoin link sent in alert)</span></label>
+                        <input type="url" id="mon-ps-link" placeholder="https://www.roblox.com/games/8737899170/...?privateServerLinkCode=...">
+                    </div>
+                    <div class="form-group">
+                        <label>Roblox Cookie <span class="optional">(.ROBLOSECURITY — needed to detect presence)</span></label>
+                        <input type="password" id="mon-roblo-cookie" placeholder="Paste your .ROBLOSECURITY cookie value here">
+                        <div class="mon-cookie-hint">Get it from browser DevTools → Application → Cookies → roblox.com → .ROBLOSECURITY</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Private Server Detection</label>
+                        <div class="mon-input-row">
+                            <span id="mon-server-id" class="mon-server-id-text">No server captured yet</span>
+                            <button type="button" class="btn-secondary mon-test-btn" onclick="detectServer()">Detect Server</button>
+                        </div>
+                        <div class="mon-cookie-hint">While a monitored player is inside your private server, click Detect Server to lock onto that server. Players leaving it will trigger the alert.</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Check Interval</label>
+                        <select id="mon-interval">
+                            <option value="30">Every 30 seconds</option>
+                            <option value="60" selected>Every 1 minute</option>
+                            <option value="120">Every 2 minutes</option>
+                            <option value="300">Every 5 minutes</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-primary">Save Settings</button>
+                </form>
+            </div>
+
+            <!-- Add Player -->
+            <div class="manage-card">
+                <h3>Add Player</h3>
+                <form id="mon-add-form">
+                    <div class="form-group">
+                        <label>Roblox User ID <span class="optional">(numbers only)</span></label>
+                        <input type="text" id="mon-add-userid" placeholder="e.g. 123456789" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Roblox Username</label>
+                        <input type="text" id="mon-add-username" placeholder="e.g. PlayerName" required>
+                    </div>
+                    <button type="submit" id="mon-add-btn" class="btn-primary">+ Add Player</button>
+                </form>
+                <div class="mon-note">
+                    Find your User ID: go to your Roblox profile page — the number in the URL is your ID.<br>
+                    e.g. roblox.com/users/<strong>123456789</strong>/profile
+                </div>
+            </div>
+
+            <!-- Players List -->
+            <div class="manage-card full-width">
+                <div class="manage-card-header">
+                    <h3>Monitored Players</h3>
+                    <span id="mon-player-count" class="count-badge">0</span>
+                </div>
+                <div id="mon-players-list" class="mon-players-list"></div>
+            </div>
+
+            <!-- Activity Log -->
+            <div class="manage-card full-width">
+                <div class="manage-card-header">
+                    <h3>Activity Log</h3>
+                    <button class="btn-secondary mon-clear-btn" onclick="clearMonitorLog()">Clear</button>
+                </div>
+                <div id="mon-log" class="mon-log"></div>
+            </div>
+
+        </div>
     </div>
 
     <!-- ── Manage War ── -->
@@ -183,24 +259,6 @@
                     </div>
                     <button type="submit" class="btn-primary">Add Clan</button>
                 </form>
-            </div>
-
-            <!-- Live PS99 Data Import -->
-            <div class="manage-card full-width live-card">
-                <div class="manage-card-header">
-                    <h3>🎮 Live PS99 Battle Data</h3>
-                    <span class="live-dot"></span>
-                </div>
-                <p class="live-desc">Auto-fetch the current active clan battle from the official PS99 API.</p>
-                <div class="live-actions">
-                    <button class="btn-live" id="fetch-active-battle-btn">⚡ Fetch Active Battle</button>
-                    <div class="live-divider">or import a specific clan</div>
-                    <div class="live-manual">
-                        <input type="text" id="fetch-clan-name" class="live-input" placeholder="Enter clan name e.g. GODS">
-                        <button class="btn-live-secondary" id="fetch-clan-btn">Import</button>
-                    </div>
-                </div>
-                <div id="import-status" class="import-status"></div>
             </div>
 
             <div class="manage-card full-width">
@@ -265,6 +323,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="app.js?v=31"></script>
+<script src="app.js"></script>
 </body>
 </html>
