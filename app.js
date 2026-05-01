@@ -746,40 +746,14 @@ function updateMonitorBtn() {
 
 const PROXY = 'https://corsproxy.io/?';
 
-async function robloxGet(url) {
-    const res = await fetch(PROXY + encodeURIComponent(url));
-    if (!res.ok) throw new Error(`API error ${res.status}`);
-    return res.json();
-}
-
-async function robloxPost(url, body) {
-    const res = await fetch(PROXY + encodeURIComponent(url), {
-        method:  'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-requested-with': 'XMLHttpRequest',
-        },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`API error ${res.status}`);
-    return res.json();
-}
-
-async function lookupRobloxUser(input) {
-    const trimmed = input.trim();
-    if (/^\d+$/.test(trimmed)) {
-        const data = await robloxGet(`https://users.roblox.com/v1/users/${trimmed}`);
-        if (data.errors || !data.id) throw new Error('User ID not found');
-        return { userId: data.id, username: data.name };
-    }
-    const data = await robloxPost('https://users.roblox.com/v1/usernames/users',
-        { usernames: [trimmed], excludeBannedUsers: false });
-    if (!data.data?.length) throw new Error('Username not found');
-    return { userId: data.data[0].id, username: data.data[0].name };
-}
-
 async function fetchPresences(userIds) {
-    const data = await robloxPost('https://presence.roblox.com/v1/presence/users', { userIds });
+    const res = await fetch(PROXY + encodeURIComponent('https://presence.roblox.com/v1/presence/users'), {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ userIds }),
+    });
+    if (!res.ok) throw new Error(`Presence API error ${res.status}`);
+    const data = await res.json();
     return data.userPresences || [];
 }
 
@@ -954,42 +928,36 @@ document.getElementById('mon-settings-form').addEventListener('submit', e => {
     }
 });
 
-document.getElementById('mon-add-form').addEventListener('submit', async e => {
+document.getElementById('mon-add-form').addEventListener('submit', e => {
     e.preventDefault();
-    const input    = document.getElementById('mon-add-username').value.trim();
-    const nickname = document.getElementById('mon-add-nickname').value.trim();
-    if (!input) return;
+    const rawId    = document.getElementById('mon-add-userid').value.trim();
+    const username = document.getElementById('mon-add-username').value.trim();
+    if (!rawId || !username) return;
 
-    const btn = document.getElementById('mon-add-btn');
-    btn.textContent = 'Looking up…';
-    btn.disabled    = true;
+    if (!/^\d+$/.test(rawId)) { toast('User ID must be numbers only', 'error'); return; }
+    const userId = Number(rawId);
+
+    if (monitorState.players.some(p => p.userId === userId)) {
+        toast('Player already in monitor list', 'error');
+        return;
+    }
 
     try {
-        const { userId, username } = await lookupRobloxUser(input);
-
-        if (monitorState.players.some(p => p.userId === userId)) {
-            toast('Player already in monitor list', 'error');
-            return;
-        }
-
         monitorState.players.push({
             id: uid(), userId, username,
-            nickname:    nickname || '',
+            nickname:    '',
             status:      'unknown',
             lastChecked: null,
         });
 
-        document.getElementById('mon-add-username').value = '';
-        document.getElementById('mon-add-nickname').value = '';
+        document.getElementById('mon-add-userid').value   = '';
+        document.getElementById('mon-add-username').value  = '';
         saveMonitor();
         renderMonitorPlayers();
-        addLog(`Added ${nickname || username} (@${username}, ID: ${userId})`, 'info');
-        toast(`${nickname || username} added`);
+        addLog(`Added ${username} (ID: ${userId})`, 'info');
+        toast(`${username} added`);
     } catch (err) {
         toast(`Error: ${err.message}`, 'error');
-    } finally {
-        btn.textContent = '+ Add Player';
-        btn.disabled    = false;
     }
 });
 

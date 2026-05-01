@@ -165,17 +165,18 @@
                 <h3>Add Player</h3>
                 <form id="mon-add-form">
                     <div class="form-group">
-                        <label>Roblox Username or User ID</label>
-                        <input type="text" id="mon-add-username" placeholder="Username or numeric ID" required>
+                        <label>Roblox User ID <span class="optional">(numbers only)</span></label>
+                        <input type="text" id="mon-add-userid" placeholder="e.g. 123456789" required>
                     </div>
                     <div class="form-group">
-                        <label>Nickname <span class="optional">(optional)</span></label>
-                        <input type="text" id="mon-add-nickname" placeholder="Display name in Discord alerts">
+                        <label>Roblox Username</label>
+                        <input type="text" id="mon-add-username" placeholder="e.g. PlayerName" required>
                     </div>
                     <button type="submit" id="mon-add-btn" class="btn-primary">+ Add Player</button>
                 </form>
                 <div class="mon-note">
-                    Detects when a player leaves PS99 or goes offline and sends an automatic Discord alert with the rejoin link.
+                    Find your User ID: go to your Roblox profile page — the number in the URL is your ID.<br>
+                    e.g. roblox.com/users/<strong>123456789</strong>/profile
                 </div>
             </div>
 
