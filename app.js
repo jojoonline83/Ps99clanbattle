@@ -767,8 +767,7 @@ async function fetchPresences(userIds) {
     if (!res.ok) throw new Error(`Presence API error ${res.status}`);
     const data = await res.json();
     data.userPresences?.forEach(p => {
-        const lastOnline = p.lastOnline ? new Date(p.lastOnline).toLocaleTimeString() : 'N/A';
-        addLog(`Presence: ${JSON.stringify({ id: p.userId, type: p.userPresenceType, place: p.placeId ?? null, game: p.gameId ?? null, lastOnline })}`, 'info');
+        addLog(`Presence: ${JSON.stringify(p)}`, 'info');
     });
     return data.userPresences || [];
 }
