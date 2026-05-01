@@ -947,6 +947,17 @@ async function detectServer() {
     }
 }
 
+async function testDisconnectAlert() {
+    if (!monitorState.webhook) { toast('Set a Discord webhook URL first', 'error'); return; }
+    if (!monitorState.players.length) { toast('Add a player first', 'error'); return; }
+
+    const player = monitorState.players[0];
+    addLog(`Sending test disconnect alert for ${player.username}…`, 'info');
+    await sendDiscordAlert(player, 'offline');
+    toast('Test alert sent to Discord!', 'success');
+    addLog('Test alert sent successfully', 'success');
+}
+
 function clearMonitorLog() {
     monitorLog = [];
     renderMonitorLog();
