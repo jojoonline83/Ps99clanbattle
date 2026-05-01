@@ -827,6 +827,7 @@ main {
 }
 .mon-player-name { font-weight: 700; font-size: 14px; }
 .mon-player-sub  { font-size: 11px; color: var(--text-muted); }
+.mon-pts         { font-size: 11px; color: #f59e0b; margin-left: 6px; font-weight: 600; }
 
 /* Status badge */
 .mon-badge {

@@ -700,11 +700,13 @@ function renderMonitorPlayers() {
         const lastChecked = p.lastChecked ? new Date(p.lastChecked).toLocaleTimeString() : '—';
         const name        = esc(p.nickname || p.username);
         const sub         = p.nickname ? `<span class="mon-player-sub">@${esc(p.username)}</span>` : '';
+        const pts         = p.lastKnownPoints !== null && p.lastKnownPoints !== undefined
+            ? `<span class="mon-pts">${Number(p.lastKnownPoints).toLocaleString()} pts</span>` : '';
         return `
           <div class="mon-player-row" id="mon-row-${p.id}">
             <span class="mon-dot ${si.cls}"></span>
             <div class="mon-player-info">
-              <span class="mon-player-name">${name}</span>${sub}
+              <span class="mon-player-name">${name}</span>${sub}${pts}
             </div>
             <span class="mon-badge ${si.cls}">${si.label}</span>
             <span class="mon-time">${lastChecked}</span>
@@ -753,6 +755,66 @@ function updateMonitorBtn() {
 // ── Roblox API ─────────────────────────────
 
 const PROXY = 'https://corsproxy.io/?';
+const PROXIES = ['https://corsproxy.io/?url=', 'https://api.allorigins.win/raw?url='];
+
+async function proxyFetch(url, opts = {}) {
+    for (const px of PROXIES) {
+        try {
+            const r = await fetch(px + encodeURIComponent(url), { ...opts, signal: AbortSignal.timeout(10000) });
+            if (r.ok) return r;
+        } catch (_) {}
+    }
+    throw new Error('All proxies failed');
+}
+
+// ── Clan-point helpers for activity tracking ──
+
+function getPlayerPointsByUserId(userId) {
+    const id = String(userId);
+    for (const clan of state.clans) {
+        const p = clan.players.find(p => String(p.userId) === id || String(p.id) === id);
+        if (p) return p.points ?? 0;
+    }
+    return null;
+}
+
+async function refreshClanPoints() {
+    if (!state.clans.length) return;
+    const API = 'https://biggamesapi.io/api';
+    for (const clan of state.clans) {
+        try {
+            const url = `${API}/clan/${encodeURIComponent(clan.name)}?_=${Date.now()}`;
+            const res = await proxyFetch(url, { cache: 'no-store' });
+            const json = await res.json();
+            const battles = json?.data?.Battles ?? {};
+            const lastKey = Object.keys(battles).sort().pop();
+            if (!lastKey) continue;
+            const contributions = battles[lastKey]?.PointContributions ?? [];
+            const pts = {};
+            contributions.forEach(c => {
+                const id = String(c.UserID ?? c.userId ?? c.id ?? '');
+                if (id && id !== '0') pts[id] = c.Points ?? c.points ?? 0;
+            });
+            clan.players.forEach(p => {
+                const v = pts[String(p.userId)] ?? pts[String(p.id)];
+                if (v !== undefined) p.points = v;
+            });
+        } catch (_) {}
+    }
+}
+
+async function loadClanDataForMonitoring() {
+    const statusEl = document.getElementById('mon-clan-status');
+    if (!state.clans.length) {
+        if (statusEl) statusEl.textContent = 'No clans in tracker — add clans first in Manage War';
+        return;
+    }
+    if (statusEl) statusEl.textContent = 'Refreshing…';
+    await refreshClanPoints();
+    const total = state.clans.reduce((s, c) => s + c.players.length, 0);
+    if (statusEl) statusEl.textContent = `${state.clans.length} clans, ${total} players loaded`;
+    addLog(`📋 Clan data loaded: ${state.clans.length} clans, ${total} players`, 'success');
+}
 
 async function fetchPresences(userIds) {
     const headers = { 'Content-Type': 'application/json' };
@@ -779,20 +841,22 @@ async function sendDiscordAlert(player, newStatus) {
     if (!monitorState.webhook) return;
     const psLink    = monitorState.privateServerLink;
     const now       = Math.floor(Date.now() / 1000);
-    const label     = newStatus === 'offline' ? 'Offline' : 'Left PS99';
     const display   = player.nickname || player.username;
+    const secSince  = player.lastPointsChangeTime
+        ? Math.round((Date.now() - player.lastPointsChangeTime) / 1000) : null;
+    const inactDesc = secSince ? `No battle point increase for **${Math.round(secSince / 60)} minutes**.` : '';
     const fields    = [
         { name: 'Player', value: `**${display}**${player.nickname ? ` (@${player.username})` : ''}`, inline: true },
-        { name: 'Status', value: label,                    inline: true },
-        { name: 'Time',   value: `<t:${now}:T>`,           inline: true },
+        { name: 'Last Points', value: player.lastKnownPoints !== null ? player.lastKnownPoints.toLocaleString() : 'N/A', inline: true },
+        { name: 'Time',   value: `<t:${now}:T>`, inline: true },
     ];
     if (psLink) fields.push({ name: 'Rejoin Private Server', value: psLink, inline: false });
 
     const payload = {
         username: 'PS99 Monitor',
         embeds: [{
-            title:       `⚠️ ${display} disconnected from PS99!`,
-            description: `**${player.username}** has left the game or disconnected from the private server.`,
+            title:       `⚠️ ${display} may have left the clan battle!`,
+            description: `**${display}** has stopped gaining battle points. ${inactDesc}\nPlease check if they are still active in the private server.`,
             color:       0xEF4444,
             fields,
             footer:    { text: 'PS99 Clan Battle Tracker • Server Monitor' },
@@ -847,48 +911,72 @@ async function runMonitorCycle() {
     if (!players.length) return;
 
     try {
+        // Refresh clan points first so we have the latest data
+        await refreshClanPoints();
+
         const presences = await fetchPresences(players.map(p => p.userId));
+        const presenceMap = {};
+        presences.forEach(pr => { presenceMap[pr.userId] = pr; });
 
-        for (const presence of presences) {
-            const player = players.find(p => p.userId === presence.userId);
-            if (!player) continue;
+        // 5-minute threshold: biggamesapi.io updates every few minutes, so anything
+        // shorter will fire false alerts for active players.
+        const inactiveMs = 5 * 60 * 1000;
 
+        for (const player of players) {
+            const pr = presenceMap[player.userId];
             const prevStatus = player.status;
-            let   newStatus;
-
-            if      (presence.userPresenceType === 2)  newStatus = 'inServer';
-            else if (presence.userPresenceType === 1)  newStatus = 'online';
-            else                                       newStatus = 'offline';
+            let newStatus = pr
+                ? (pr.userPresenceType === 2 ? 'inServer' : pr.userPresenceType === 1 ? 'online' : 'offline')
+                : prevStatus || 'unknown';
 
             player.lastChecked = Date.now();
 
-            const currentLastOnline = presence.lastOnline ? new Date(presence.lastOnline).getTime() : null;
-            const prevLastOnline = player.lastOnlineTimestamp || null;
-            const lastOnlineChanged = currentLastOnline && prevLastOnline && currentLastOnline > prevLastOnline;
+            // Point-based activity tracking
+            const currentPoints = getPlayerPointsByUserId(player.userId);
+            const hasPointData  = currentPoints !== null;
+            const pointsIncreased = hasPointData &&
+                                    player.lastKnownPoints !== null &&
+                                    player.lastKnownPoints !== undefined &&
+                                    currentPoints > player.lastKnownPoints;
 
-            const wasInServer = prevStatus === 'inServer';
-            const stalePresence = wasInServer && newStatus === 'inServer' && prevLastOnline && !lastOnlineChanged;
-            const leftServer  = wasInServer && (newStatus !== 'inServer' || stalePresence);
+            const isInactive = hasPointData &&
+                                player.lastKnownPoints !== null &&
+                                player.lastKnownPoints !== undefined &&
+                                !pointsIncreased &&
+                                player.lastPointsChangeTime &&
+                                (Date.now() - player.lastPointsChangeTime) > inactiveMs &&
+                                !player.alertSent;
 
-
-            if (leftServer) {
-                player.status = 'disconnected';
-                addLog(`⚠️ ${player.nickname || player.username} left the private server!`, 'alert');
+            if (isInactive) {
+                const secSince = Math.round((Date.now() - player.lastPointsChangeTime) / 1000);
+                player.status    = 'disconnected';
+                player.alertSent = true;
+                addLog(`⚠️ ${player.nickname || player.username}: no point increase for ${secSince}s — sending alert`, 'alert');
                 await sendDiscordAlert(player, newStatus);
-                toast(`${player.nickname || player.username} left the server!`, 'error');
-                setTimeout(() => {
-                    player.status = newStatus;
-                    renderMonitorPlayers();
-                }, 5000);
+                toast(`${player.nickname || player.username} — no activity for ${Math.round(secSince / 60)}min!`, 'error');
+                setTimeout(() => { player.status = newStatus; renderMonitorPlayers(); }, 5000);
             } else {
-                if (newStatus === 'inServer' && prevStatus !== 'inServer' &&
-                    prevStatus !== 'unknown' && prevStatus !== undefined) {
-                    addLog(`✅ ${player.nickname || player.username} joined the private server`, 'success');
-                }
                 player.status = newStatus;
             }
 
-            if (currentLastOnline) player.lastOnlineTimestamp = currentLastOnline;
+            // Update point tracking
+            if (hasPointData) {
+                if (player.lastKnownPoints === null || player.lastKnownPoints === undefined) {
+                    player.lastKnownPoints    = currentPoints;
+                    player.lastPointsChangeTime = Date.now();
+                    addLog(`📊 ${player.nickname || player.username}: tracking started at ${currentPoints.toLocaleString()} pts`, 'info');
+                } else if (pointsIncreased) {
+                    addLog(`📈 ${player.nickname || player.username}: ${player.lastKnownPoints.toLocaleString()} → ${currentPoints.toLocaleString()} pts`, 'success');
+                    player.lastKnownPoints    = currentPoints;
+                    player.lastPointsChangeTime = Date.now();
+                    player.alertSent = false;
+                } else {
+                    const secSince = Math.round((Date.now() - player.lastPointsChangeTime) / 1000);
+                    addLog(`📊 ${player.nickname || player.username}: ${currentPoints.toLocaleString()} pts (no change ${secSince}s)`, 'info');
+                }
+            } else {
+                addLog(`⚠️ No clan data for ${player.nickname || player.username} — click Load Clans`, 'error');
+            }
         }
 
         saveMonitor();
@@ -901,11 +989,20 @@ async function runMonitorCycle() {
 function startMonitoring() {
     if (!monitorState.players.length) { toast('Add players to monitor first', 'error'); return; }
     if (!monitorState.webhook)        { toast('Set a Discord webhook URL first', 'error'); return; }
+
+    // Reset point tracking so stale timers from previous sessions don't fire immediately
+    monitorState.players.forEach(p => {
+        p.lastKnownPoints     = null;
+        p.lastPointsChangeTime = null;
+        p.alertSent           = false;
+        p.status              = 'unknown';
+    });
+
     monitorRunning = true;
     updateMonitorBtn();
     addLog('Monitoring started', 'success');
     runMonitorCycle();
-    monitorTimer = setInterval(runMonitorCycle, (monitorState.intervalSec || 60) * 1000);
+    monitorTimer = setInterval(runMonitorCycle, (monitorState.intervalSec || 45) * 1000);
 }
 
 function stopMonitoring() {

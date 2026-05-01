@@ -166,10 +166,19 @@
                         <label>Check Interval</label>
                         <select id="mon-interval">
                             <option value="30">Every 30 seconds</option>
-                            <option value="60" selected>Every 1 minute</option>
+                            <option value="45" selected>Every 45 seconds</option>
+                            <option value="60">Every 1 minute</option>
                             <option value="120">Every 2 minutes</option>
                             <option value="300">Every 5 minutes</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Clan Data <span class="optional">(load to track player points)</span></label>
+                        <div class="mon-input-row">
+                            <span id="mon-clan-status" class="mon-server-id-text">No clan data loaded</span>
+                            <button type="button" class="btn-secondary mon-test-btn" onclick="loadClanDataForMonitoring()">Load Clans</button>
+                        </div>
+                        <div class="mon-cookie-hint">Add your clans in Manage War first, then click Load Clans. Alert fires if a player has no point increase for 5 minutes.</div>
                     </div>
                     <button type="submit" class="btn-primary">Save Settings</button>
                 </form>
