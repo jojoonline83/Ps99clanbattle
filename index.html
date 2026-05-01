@@ -11,7 +11,7 @@
     <!-- Force reload if a newer version of app.js has been deployed -->
     <script>
     (function(){
-        var V = 32;
+        var V = 33;
         var k = '_ps99v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
@@ -34,8 +34,9 @@
             <button class="nav-btn active" data-view="dashboard">Dashboard</button>
             <button class="nav-btn" data-view="compare">Compare</button>
             <button class="nav-btn" data-view="manage">Manage War</button>
+            <button class="nav-btn" data-view="monitor">Monitor</button>
         </nav>
-        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v32</div>
+        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v33</div>
     </div>
 </header>
 
@@ -138,6 +139,99 @@
         </div>
         <button class="btn-primary compare-btn" id="do-compare-btn">Compare Clans</button>
         <div id="compare-results" class="compare-results"></div>
+    </div>
+
+    <!-- ── Monitor ── -->
+    <div id="monitor-view" class="view">
+        <div class="mon-page-header">
+            <h2 class="view-title" style="margin-bottom:0">Server Monitor</h2>
+            <div class="mon-header-controls">
+                <div id="mon-global-indicator" class="mon-global-status mon-global-idle">
+                    <span class="mon-global-dot"></span>
+                    <span id="mon-global-text">Idle</span>
+                </div>
+                <button id="mon-toggle-btn" class="btn-primary" onclick="toggleMonitoring()">&#9654; Start Monitoring</button>
+                <button class="btn-secondary" onclick="checkNow()">Check Now</button>
+                <button class="btn-secondary" onclick="testDisconnectAlert()">Test Alert</button>
+            </div>
+        </div>
+
+        <div class="monitor-grid">
+            <!-- Settings -->
+            <div class="manage-card">
+                <h3>Settings</h3>
+                <form id="mon-settings-form">
+                    <div class="form-group">
+                        <label>Discord Webhook URL</label>
+                        <div class="mon-input-row">
+                            <input type="url" id="mon-webhook" placeholder="https://discord.com/api/webhooks/...">
+                            <button type="button" class="btn-secondary mon-test-btn" onclick="testWebhook()">Test</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>PS99 Private Server Link <span class="optional">(rejoin link sent in alert)</span></label>
+                        <input type="url" id="mon-ps-link" placeholder="https://www.roblox.com/games/8737899170/...?privateServerLinkCode=...">
+                    </div>
+                    <div class="form-group">
+                        <label>Check Interval</label>
+                        <select id="mon-interval">
+                            <option value="30">Every 30 seconds</option>
+                            <option value="45" selected>Every 45 seconds</option>
+                            <option value="60">Every 1 minute</option>
+                            <option value="120">Every 2 minutes</option>
+                            <option value="300">Every 5 minutes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Clan Data <span class="optional">(load to enable point tracking)</span></label>
+                        <div class="mon-input-row">
+                            <span id="mon-clan-status" class="mon-server-id-text">No clan data loaded</span>
+                            <button type="button" class="btn-secondary mon-test-btn" onclick="loadClanDataForMonitoring()">Load Clans</button>
+                        </div>
+                        <div class="mon-cookie-hint">Add clans in Manage War first, then click Load Clans. Alert fires if a player has no point increase for 5 minutes.</div>
+                    </div>
+                    <button type="submit" class="btn-primary">Save Settings</button>
+                </form>
+            </div>
+
+            <!-- Add Player -->
+            <div class="manage-card">
+                <h3>Add Player</h3>
+                <form id="mon-add-form">
+                    <div class="form-group">
+                        <label>Roblox User ID <span class="optional">(numbers only)</span></label>
+                        <input type="text" id="mon-add-userid" placeholder="e.g. 123456789" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Roblox Username</label>
+                        <input type="text" id="mon-add-username" placeholder="e.g. PlayerName" required>
+                    </div>
+                    <button type="submit" id="mon-add-btn" class="btn-primary">+ Add Player</button>
+                </form>
+                <div class="mon-note">
+                    Find your User ID: go to your Roblox profile — the number in the URL is your ID.<br>
+                    e.g. roblox.com/users/<strong>123456789</strong>/profile
+                </div>
+            </div>
+
+            <!-- Players List -->
+            <div class="manage-card full-width">
+                <div class="manage-card-header">
+                    <h3>Monitored Players</h3>
+                    <span id="mon-player-count" class="count-badge">0</span>
+                </div>
+                <div id="mon-players-list" class="mon-players-list"></div>
+            </div>
+
+            <!-- Activity Log -->
+            <div class="manage-card full-width">
+                <div class="manage-card-header">
+                    <h3>Activity Log</h3>
+                    <button class="btn-secondary mon-clear-btn" onclick="clearMonitorLog()">Clear</button>
+                </div>
+                <div id="mon-log" class="mon-log"></div>
+            </div>
+        </div>
     </div>
 
     <!-- ── Manage War ── -->

@@ -130,6 +130,7 @@ function switchView(name) {
     if (name === 'dashboard') renderDashboard();
     if (name === 'compare')   renderCompareInit();
     if (name === 'manage')    renderManage();
+    if (name === 'monitor')   renderMonitor();
 }
 
 function showClanDetail(clanId) {
@@ -1204,8 +1205,400 @@ setInterval(async () => {
     try { await loadBattleData({ silent: true }); } catch (_) {}
 }, 120_000);
 
+// ── Monitor ────────────────────────────────
+
+const MONITOR_KEY = 'ps99_monitor_v1';
+
+let monitorState = {
+    webhook:           '',
+    intervalSec:       45,
+    privateServerLink: '',
+    players:           [],
+};
+
+let monitorRunning = false;
+let monitorTimer   = null;
+let monitorLog     = [];
+
+function saveMonitor() {
+    try { localStorage.setItem(MONITOR_KEY, JSON.stringify(monitorState)); } catch (_) {}
+}
+
+function loadMonitor() {
+    try {
+        const raw = localStorage.getItem(MONITOR_KEY);
+        if (raw) {
+            const saved = JSON.parse(raw);
+            monitorState = { ...monitorState, ...saved };
+            monitorState.players.forEach(p => { p.status = 'unknown'; p.lastChecked = null; });
+        }
+    } catch (_) {}
+}
+
+function getStatusInfo(status) {
+    switch (status) {
+        case 'inServer':     return { cls: 'ms-ingame',       label: 'In PS99' };
+        case 'online':       return { cls: 'ms-online',       label: 'Online' };
+        case 'offline':      return { cls: 'ms-offline',      label: 'Offline' };
+        case 'disconnected': return { cls: 'ms-disconnected', label: 'Inactive!' };
+        default:             return { cls: 'ms-unknown',      label: 'Unknown' };
+    }
+}
+
+function renderMonitor() {
+    document.getElementById('mon-webhook').value  = monitorState.webhook           || '';
+    document.getElementById('mon-interval').value = monitorState.intervalSec       || 45;
+    document.getElementById('mon-ps-link').value  = monitorState.privateServerLink || '';
+    const cs = document.getElementById('mon-clan-status');
+    if (cs && state.clans.length) {
+        const total = state.clans.reduce((s, c) => s + c.players.length, 0);
+        cs.textContent = `${state.clans.length} clans, ${total} players`;
+    }
+    renderMonitorPlayers();
+    renderMonitorLog();
+    updateMonitorBtn();
+}
+
+function renderMonitorPlayers() {
+    const list = document.getElementById('mon-players-list');
+    if (!list) return;
+    document.getElementById('mon-player-count').textContent = monitorState.players.length;
+
+    if (monitorState.players.length === 0) {
+        list.innerHTML = '<div class="mon-empty">No players added yet.</div>';
+        return;
+    }
+
+    list.innerHTML = monitorState.players.map(p => {
+        const si          = getStatusInfo(p.status);
+        const lastChecked = p.lastChecked ? new Date(p.lastChecked).toLocaleTimeString() : '—';
+        const name        = esc(p.username);
+        const pts         = p.lastKnownPoints !== null && p.lastKnownPoints !== undefined
+            ? `<span class="mon-pts">${Number(p.lastKnownPoints).toLocaleString()} pts</span>` : '';
+        return `
+          <div class="mon-player-row" id="mon-row-${p.id}">
+            <span class="mon-dot ${si.cls}"></span>
+            <div class="mon-player-info">
+              <span class="mon-player-name">${name}</span>${pts}
+            </div>
+            <span class="mon-badge ${si.cls}">${si.label}</span>
+            <span class="mon-time">${lastChecked}</span>
+            <button class="btn-icon del" onclick="removeMonitorPlayer('${p.id}')" title="Remove">🗑️</button>
+          </div>`;
+    }).join('');
+}
+
+function renderMonitorLog() {
+    const el = document.getElementById('mon-log');
+    if (!el) return;
+    if (monitorLog.length === 0) {
+        el.innerHTML = '<div class="mon-log-empty">No activity yet.</div>';
+        return;
+    }
+    el.innerHTML = [...monitorLog].slice(-60).reverse().map(e => `
+      <div class="mon-log-entry mon-log-${e.type}">
+        <span class="mon-log-time">${e.time}</span>
+        <span>${esc(e.msg)}</span>
+      </div>`).join('');
+}
+
+function addLog(msg, type = 'info') {
+    monitorLog.push({ time: new Date().toLocaleTimeString(), msg, type });
+    if (monitorLog.length > 100) monitorLog.shift();
+    renderMonitorLog();
+}
+
+function updateMonitorBtn() {
+    const btn = document.getElementById('mon-toggle-btn');
+    const ind = document.getElementById('mon-global-indicator');
+    const txt = document.getElementById('mon-global-text');
+    if (!btn) return;
+    if (monitorRunning) {
+        btn.textContent = '⏹ Stop Monitoring';
+        btn.className   = 'btn-danger';
+        if (ind) ind.className = 'mon-global-status mon-global-running';
+        if (txt) txt.textContent = 'Monitoring';
+    } else {
+        btn.textContent = '▶ Start Monitoring';
+        btn.className   = 'btn-primary';
+        if (ind) ind.className = 'mon-global-status mon-global-idle';
+        if (txt) txt.textContent = 'Idle';
+    }
+}
+
+// ── Point-tracking helpers ──────────────────
+
+function getPlayerPointsByUserId(userId) {
+    const id = String(userId);
+    for (const clan of state.clans) {
+        const p = clan.players.find(p => String(p.userId) === id || String(p.id) === id);
+        if (p) return p.points ?? 0;
+    }
+    return null;
+}
+
+async function refreshClanPoints() {
+    if (!state.clans.length) return;
+    const PROXIES = ['https://corsproxy.io/?url=', 'https://api.allorigins.win/raw?url='];
+    for (const clan of state.clans) {
+        for (const px of PROXIES) {
+            try {
+                const url = `https://biggamesapi.io/api/clan/${encodeURIComponent(clan.name)}?_=${Date.now()}`;
+                const res = await fetch(px + encodeURIComponent(url), { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+                if (!res.ok) continue;
+                const json = await res.json();
+                const battles = json?.data?.Battles ?? {};
+                const lastKey = Object.keys(battles).sort().pop();
+                if (!lastKey) break;
+                const contributions = battles[lastKey]?.PointContributions ?? [];
+                const pts = {};
+                contributions.forEach(c => {
+                    const id = String(c.UserID ?? c.userId ?? c.id ?? '');
+                    if (id && id !== '0') pts[id] = c.Points ?? c.points ?? 0;
+                });
+                clan.players.forEach(p => {
+                    const v = pts[String(p.userId)] ?? pts[String(p.id)];
+                    if (v !== undefined) p.points = v;
+                });
+                break;
+            } catch (_) {}
+        }
+    }
+}
+
+async function loadClanDataForMonitoring() {
+    const statusEl = document.getElementById('mon-clan-status');
+    if (!state.clans.length) {
+        if (statusEl) statusEl.textContent = 'No clans — add clans in Manage War first';
+        toast('Add clans in Manage War first', 'error');
+        return;
+    }
+    if (statusEl) statusEl.textContent = 'Refreshing…';
+    await refreshClanPoints();
+    const total = state.clans.reduce((s, c) => s + c.players.length, 0);
+    if (statusEl) statusEl.textContent = `${state.clans.length} clans, ${total} players loaded`;
+    addLog(`📋 Clan data loaded: ${state.clans.length} clans, ${total} players`, 'success');
+    toast('Clan data loaded', 'success');
+}
+
+// ── Discord ────────────────────────────────
+
+async function sendDiscordAlert(player) {
+    if (!monitorState.webhook) return;
+    const psLink   = monitorState.privateServerLink;
+    const now      = Math.floor(Date.now() / 1000);
+    const display  = player.username;
+    const secSince = player.lastPointsChangeTime
+        ? Math.round((Date.now() - player.lastPointsChangeTime) / 1000) : null;
+    const inactDesc = secSince ? `No battle point increase for **${Math.round(secSince / 60)} minutes**.` : '';
+    const fields = [
+        { name: 'Player',      value: `**${display}**`, inline: true },
+        { name: 'Last Points', value: player.lastKnownPoints != null ? Number(player.lastKnownPoints).toLocaleString() : 'N/A', inline: true },
+        { name: 'Time',        value: `<t:${now}:T>`, inline: true },
+    ];
+    if (psLink) fields.push({ name: 'Rejoin', value: psLink, inline: false });
+
+    try {
+        await fetch(monitorState.webhook, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: 'PS99 Monitor',
+                embeds: [{
+                    title:       `⚠️ ${display} may have stopped playing!`,
+                    description: `**${display}** has not gained battle points. ${inactDesc}`,
+                    color:       0xEF4444,
+                    fields,
+                    footer:    { text: 'PS99 Clan Battle Tracker • Monitor' },
+                    timestamp: new Date().toISOString(),
+                }],
+            }),
+        });
+    } catch (e) {
+        addLog(`Discord failed: ${e.message}`, 'error');
+    }
+}
+
+async function testWebhook() {
+    const url = document.getElementById('mon-webhook').value.trim();
+    if (!url) { toast('Enter a webhook URL first', 'error'); return; }
+    try {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: 'PS99 Monitor',
+                embeds: [{ title: '✅ Webhook connected!', description: 'PS99 Monitor will send alerts here.', color: 0x10B981 }],
+            }),
+        });
+        if (r.ok || r.status === 204) toast('Test message sent!', 'success');
+        else toast(`Webhook error: ${r.status}`, 'error');
+    } catch (e) {
+        toast('Webhook failed: ' + e.message, 'error');
+    }
+}
+
+// ── Monitor Loop ───────────────────────────
+
+async function runMonitorCycle() {
+    const players = monitorState.players.filter(p => p.userId);
+    if (!players.length) return;
+
+    try {
+        await refreshClanPoints();
+
+        // 5 minutes: biggamesapi.io updates every few minutes, shorter = false positives
+        const inactiveMs = 5 * 60 * 1000;
+
+        for (const player of players) {
+            player.lastChecked = Date.now();
+
+            const currentPoints = getPlayerPointsByUserId(player.userId);
+            const hasPointData  = currentPoints !== null;
+            const pointsIncreased = hasPointData &&
+                                    player.lastKnownPoints != null &&
+                                    currentPoints > player.lastKnownPoints;
+
+            const isInactive = hasPointData &&
+                                player.lastKnownPoints != null &&
+                                !pointsIncreased &&
+                                player.lastPointsChangeTime &&
+                                (Date.now() - player.lastPointsChangeTime) > inactiveMs &&
+                                !player.alertSent;
+
+            if (isInactive) {
+                const secSince = Math.round((Date.now() - player.lastPointsChangeTime) / 1000);
+                player.status    = 'disconnected';
+                player.alertSent = true;
+                addLog(`⚠️ ${player.username}: no points for ${secSince}s — alert sent`, 'alert');
+                await sendDiscordAlert(player);
+                toast(`${player.username} — inactive for ${Math.round(secSince / 60)}min!`, 'error');
+                setTimeout(() => { player.status = 'unknown'; renderMonitorPlayers(); }, 5000);
+            }
+
+            if (hasPointData) {
+                if (player.lastKnownPoints == null) {
+                    player.lastKnownPoints     = currentPoints;
+                    player.lastPointsChangeTime = Date.now();
+                    addLog(`📊 ${player.username}: tracking started at ${currentPoints.toLocaleString()} pts`, 'info');
+                } else if (pointsIncreased) {
+                    addLog(`📈 ${player.username}: ${Number(player.lastKnownPoints).toLocaleString()} → ${currentPoints.toLocaleString()} pts`, 'success');
+                    player.lastKnownPoints     = currentPoints;
+                    player.lastPointsChangeTime = Date.now();
+                    player.alertSent = false;
+                    if (player.status === 'disconnected') player.status = 'unknown';
+                } else {
+                    const secSince = Math.round((Date.now() - player.lastPointsChangeTime) / 1000);
+                    addLog(`📊 ${player.username}: ${currentPoints.toLocaleString()} pts (no change ${secSince}s)`, 'info');
+                }
+            } else {
+                addLog(`⚠️ No clan data for ${player.username} — click Load Clans`, 'error');
+            }
+        }
+
+        saveMonitor();
+        renderMonitorPlayers();
+    } catch (e) {
+        addLog(`Check failed: ${e.message}`, 'error');
+    }
+}
+
+function startMonitoring() {
+    if (!monitorState.players.length) { toast('Add players first', 'error'); return; }
+    if (!monitorState.webhook)        { toast('Set a Discord webhook URL first', 'error'); return; }
+
+    monitorState.players.forEach(p => {
+        p.lastKnownPoints      = null;
+        p.lastPointsChangeTime = null;
+        p.alertSent            = false;
+        p.status               = 'unknown';
+    });
+
+    monitorRunning = true;
+    updateMonitorBtn();
+    addLog('Monitoring started', 'success');
+    runMonitorCycle();
+    monitorTimer = setInterval(runMonitorCycle, (monitorState.intervalSec || 45) * 1000);
+}
+
+function stopMonitoring() {
+    monitorRunning = false;
+    clearInterval(monitorTimer);
+    monitorTimer = null;
+    updateMonitorBtn();
+    addLog('Monitoring stopped', 'info');
+    monitorState.players.forEach(p => { p.status = 'unknown'; });
+    renderMonitorPlayers();
+}
+
+function toggleMonitoring() {
+    if (monitorRunning) stopMonitoring();
+    else                startMonitoring();
+}
+
+function removeMonitorPlayer(id) {
+    monitorState.players = monitorState.players.filter(x => x.id !== id);
+    saveMonitor();
+    renderMonitorPlayers();
+    if (!monitorState.players.length && monitorRunning) stopMonitoring();
+}
+
+async function checkNow() {
+    if (!monitorRunning) { toast('Start monitoring first', 'error'); return; }
+    addLog('Manual check triggered…', 'info');
+    await runMonitorCycle();
+}
+
+async function testDisconnectAlert() {
+    if (!monitorState.webhook) { toast('Set a Discord webhook URL first', 'error'); return; }
+    if (!monitorState.players.length) { toast('Add a player first', 'error'); return; }
+    const player = { ...monitorState.players[0], lastPointsChangeTime: Date.now() - 360000, lastKnownPoints: 12345 };
+    addLog(`Sending test alert for ${player.username}…`, 'info');
+    await sendDiscordAlert(player);
+    toast('Test alert sent!', 'success');
+}
+
+function clearMonitorLog() {
+    monitorLog = [];
+    renderMonitorLog();
+}
+
+// ── Monitor Event Wiring ───────────────────
+
+document.getElementById('mon-settings-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    monitorState.webhook           = document.getElementById('mon-webhook').value.trim();
+    monitorState.intervalSec       = Number(document.getElementById('mon-interval').value) || 45;
+    monitorState.privateServerLink = document.getElementById('mon-ps-link').value.trim();
+    saveMonitor();
+    toast('Settings saved');
+    if (monitorRunning) {
+        clearInterval(monitorTimer);
+        monitorTimer = setInterval(runMonitorCycle, monitorState.intervalSec * 1000);
+    }
+});
+
+document.getElementById('mon-add-form')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const rawId    = document.getElementById('mon-add-userid').value.trim();
+    const username = document.getElementById('mon-add-username').value.trim();
+    if (!rawId || !username) return;
+    if (!/^\d+$/.test(rawId)) { toast('User ID must be numbers only', 'error'); return; }
+    const userId = Number(rawId);
+    if (monitorState.players.some(p => p.userId === userId)) { toast('Already in list', 'error'); return; }
+
+    monitorState.players.push({ id: uid(), userId, username, status: 'unknown', lastChecked: null });
+    document.getElementById('mon-add-userid').value  = '';
+    document.getElementById('mon-add-username').value = '';
+    saveMonitor();
+    renderMonitorPlayers();
+    addLog(`Added ${username} (ID: ${userId})`, 'info');
+    toast(`${username} added`);
+});
+
 // ── Bootstrap ──────────────────────────────
 load();
+loadMonitor();
 // Show cached data instantly, then fetch fresh data in background
 renderDashboard();
 loadBattleData({ silent: state.clans.length > 0 });
