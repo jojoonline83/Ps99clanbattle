@@ -153,6 +153,14 @@
                         <div class="mon-cookie-hint">Get it from browser DevTools → Application → Cookies → roblox.com → .ROBLOSECURITY</div>
                     </div>
                     <div class="form-group">
+                        <label>Private Server Detection</label>
+                        <div class="mon-input-row">
+                            <span id="mon-server-id" class="mon-server-id-text">No server captured yet</span>
+                            <button type="button" class="btn-secondary mon-test-btn" onclick="detectServer()">Detect Server</button>
+                        </div>
+                        <div class="mon-cookie-hint">While a monitored player is inside your private server, click Detect Server to lock onto that server. Players leaving it will trigger the alert.</div>
+                    </div>
+                    <div class="form-group">
                         <label>Check Interval</label>
                         <select id="mon-interval">
                             <option value="30">Every 30 seconds</option>

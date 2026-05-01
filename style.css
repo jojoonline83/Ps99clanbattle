@@ -740,6 +740,17 @@ main {
 .mon-input-row input { flex: 1; min-width: 0; }
 .mon-test-btn  { flex-shrink: 0; white-space: nowrap; }
 
+.mon-server-id-text {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: monospace;
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
 .mon-cookie-hint {
     font-size: 11px;
     color: var(--text-muted);

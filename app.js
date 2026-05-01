@@ -637,6 +637,7 @@ let monitorState = {
     intervalSec:       60,
     privateServerLink: '',
     robloSecurity:     '',
+    targetGameId:      '',
     players:           [],
 };
 
@@ -661,10 +662,11 @@ function loadMonitor() {
 
 function getStatusInfo(status) {
     switch (status) {
-        case 'inGame':       return { cls: 'ms-ingame',       label: 'In PS99' };
+        case 'inServer':     return { cls: 'ms-ingame',       label: 'In Private Server' };
+        case 'inGame':       return { cls: 'ms-online',       label: 'In PS99 (other server)' };
         case 'online':       return { cls: 'ms-online',       label: 'Online' };
         case 'offline':      return { cls: 'ms-offline',      label: 'Offline' };
-        case 'disconnected': return { cls: 'ms-disconnected', label: 'Disconnected!' };
+        case 'disconnected': return { cls: 'ms-disconnected', label: 'Left Server!' };
         case 'checking':     return { cls: 'ms-checking',     label: 'Checking…' };
         default:             return { cls: 'ms-unknown',      label: 'Unknown' };
     }
@@ -675,6 +677,10 @@ function renderMonitor() {
     document.getElementById('mon-interval').value     = monitorState.intervalSec       || 60;
     document.getElementById('mon-ps-link').value      = monitorState.privateServerLink || '';
     document.getElementById('mon-roblo-cookie').value = monitorState.robloSecurity     || '';
+    const sid = document.getElementById('mon-server-id');
+    sid.textContent = monitorState.targetGameId
+        ? `Captured: ${monitorState.targetGameId.substring(0, 12)}…`
+        : 'No server captured yet';
     renderMonitorPlayers();
     renderMonitorLog();
     updateMonitorBtn();
@@ -760,7 +766,7 @@ async function fetchPresences(userIds) {
     });
     if (!res.ok) throw new Error(`Presence API error ${res.status}`);
     const data = await res.json();
-    addLog(`Presence raw: ${JSON.stringify(data.userPresences?.map(p => ({ id: p.userId, type: p.userPresenceType, place: p.rootPlaceId })))}`, 'info');
+    addLog(`Presence: ${JSON.stringify(data.userPresences?.map(p => ({ id: p.userId, type: p.userPresenceType, place: p.rootPlaceId, game: p.gameId })))}`, 'info');
     return data.userPresences || [];
 }
 
@@ -847,28 +853,32 @@ async function runMonitorCycle() {
             const prevStatus = player.status;
             let   newStatus;
 
-            const inPS99 = presence.userPresenceType === 2 &&
-                           presence.rootPlaceId === PS99_ROOT_PLACE;
+            const inPS99   = presence.userPresenceType === 2 && presence.rootPlaceId === PS99_ROOT_PLACE;
+            const inServer = inPS99 && monitorState.targetGameId && presence.gameId === monitorState.targetGameId;
 
-            if      (inPS99)                           newStatus = 'inGame';
+            if      (inServer)                         newStatus = 'inServer';
+            else if (inPS99)                           newStatus = 'inGame';
             else if (presence.userPresenceType >= 1)   newStatus = 'online';
             else                                       newStatus = 'offline';
 
             player.lastChecked = Date.now();
 
-            if (prevStatus === 'inGame' && newStatus !== 'inGame') {
+            const wasInServer = prevStatus === 'inServer';
+            const leftServer  = wasInServer && newStatus !== 'inServer';
+
+            if (leftServer) {
                 player.status = 'disconnected';
-                addLog(`⚠️ ${player.nickname || player.username} disconnected from PS99!`, 'alert');
+                addLog(`⚠️ ${player.nickname || player.username} left the private server!`, 'alert');
                 await sendDiscordAlert(player, newStatus);
-                toast(`${player.nickname || player.username} disconnected!`, 'error');
+                toast(`${player.nickname || player.username} left the server!`, 'error');
                 setTimeout(() => {
                     player.status = newStatus;
                     renderMonitorPlayers();
                 }, 5000);
             } else {
-                if (newStatus === 'inGame' && prevStatus !== 'inGame' &&
+                if (newStatus === 'inServer' && prevStatus !== 'inServer' &&
                     prevStatus !== 'unknown' && prevStatus !== undefined) {
-                    addLog(`✅ ${player.nickname || player.username} joined PS99`, 'success');
+                    addLog(`✅ ${player.nickname || player.username} joined the private server`, 'success');
                 }
                 player.status = newStatus;
             }
@@ -913,6 +923,35 @@ function removeMonitorPlayer(id) {
     saveMonitor();
     renderMonitorPlayers();
     if (!monitorState.players.length && monitorRunning) stopMonitoring();
+}
+
+async function detectServer() {
+    const players = monitorState.players.filter(p => p.userId);
+    if (!players.length) { toast('Add a player first', 'error'); return; }
+    if (!monitorState.robloSecurity) { toast('Enter your Roblox cookie first', 'error'); return; }
+
+    toast('Detecting server…', 'info');
+    try {
+        const presences = await fetchPresences(players.map(p => p.userId));
+        const found = presences.find(p =>
+            p.userPresenceType === 2 &&
+            p.rootPlaceId === PS99_ROOT_PLACE &&
+            p.gameId
+        );
+        if (!found) {
+            toast('No monitored player is currently in PS99', 'error');
+            addLog('Detect server failed — no player found in PS99', 'error');
+            return;
+        }
+        monitorState.targetGameId = found.gameId;
+        saveMonitor();
+        const sid = document.getElementById('mon-server-id');
+        sid.textContent = `Captured: ${found.gameId.substring(0, 12)}…`;
+        addLog(`✅ Private server captured (${found.gameId})`, 'success');
+        toast('Private server captured!', 'success');
+    } catch (e) {
+        toast(`Error: ${e.message}`, 'error');
+    }
 }
 
 function clearMonitorLog() {
