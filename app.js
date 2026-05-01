@@ -766,7 +766,9 @@ async function fetchPresences(userIds) {
     });
     if (!res.ok) throw new Error(`Presence API error ${res.status}`);
     const data = await res.json();
-    addLog(`Presence: ${JSON.stringify(data.userPresences?.map(p => ({ id: p.userId, type: p.userPresenceType, place: p.rootPlaceId, game: p.gameId })))}`, 'info');
+    data.userPresences?.forEach(p => {
+        addLog(`Check → ID:${p.userId} type:${p.userPresenceType} (0=offline 1=online 2=ingame)`, 'info');
+    });
     return data.userPresences || [];
 }
 
@@ -945,6 +947,12 @@ async function detectServer() {
     } catch (e) {
         toast(`Error: ${e.message}`, 'error');
     }
+}
+
+async function checkNow() {
+    if (!monitorRunning) { toast('Start monitoring first', 'error'); return; }
+    addLog('Manual check triggered…', 'info');
+    await runMonitorCycle();
 }
 
 async function testDisconnectAlert() {
