@@ -1249,10 +1249,12 @@ function renderMonitor() {
     document.getElementById('mon-webhook').value  = monitorState.webhook           || '';
     document.getElementById('mon-interval').value = monitorState.intervalSec       || 45;
     document.getElementById('mon-ps-link').value  = monitorState.privateServerLink || '';
+    const nameInput = document.getElementById('mon-clan-name');
+    if (nameInput && monitorState.lastClanName) nameInput.value = monitorState.lastClanName;
     const cs = document.getElementById('mon-clan-status');
     if (cs && state.clans.length) {
         const total = state.clans.reduce((s, c) => s + c.players.length, 0);
-        cs.textContent = `${state.clans.length} clans, ${total} players`;
+        cs.textContent = `✅ ${state.clans.map(c => c.name).join(', ')}: ${total} players loaded`;
     }
     renderMonitorPlayers();
     renderMonitorLog();
@@ -1367,18 +1369,58 @@ async function refreshClanPoints() {
 }
 
 async function loadClanDataForMonitoring() {
-    const statusEl = document.getElementById('mon-clan-status');
-    if (!state.clans.length) {
-        if (statusEl) statusEl.textContent = 'No clans — add clans in Manage War first';
-        toast('Add clans in Manage War first', 'error');
+    const statusEl  = document.getElementById('mon-clan-status');
+    const nameInput = document.getElementById('mon-clan-name');
+    const clanName  = nameInput ? nameInput.value.trim() : '';
+
+    if (!clanName) {
+        if (statusEl) statusEl.textContent = 'Enter a clan name first.';
+        toast('Enter a clan name', 'error');
         return;
     }
-    if (statusEl) statusEl.textContent = 'Refreshing…';
-    await refreshClanPoints();
-    const total = state.clans.reduce((s, c) => s + c.players.length, 0);
-    if (statusEl) statusEl.textContent = `${state.clans.length} clans, ${total} players loaded`;
-    addLog(`📋 Clan data loaded: ${state.clans.length} clans, ${total} players`, 'success');
-    toast('Clan data loaded', 'success');
+
+    if (statusEl) statusEl.textContent = `Loading ${clanName}…`;
+    addLog(`📡 Fetching clan data for ${clanName}…`, 'info');
+
+    const PROXIES = ['https://corsproxy.io/?url=', 'https://api.allorigins.win/raw?url='];
+    let json = null;
+    for (const px of PROXIES) {
+        try {
+            const url = `https://biggamesapi.io/api/clan/${encodeURIComponent(clanName)}?_=${Date.now()}`;
+            const res = await fetch(px + encodeURIComponent(url), { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+            if (!res.ok) continue;
+            json = await res.json();
+            break;
+        } catch (_) {}
+    }
+
+    if (!json?.data) {
+        if (statusEl) statusEl.textContent = `❌ Failed to load "${clanName}" — check name and try again.`;
+        addLog(`❌ Failed to load clan: ${clanName}`, 'error');
+        toast(`Failed to load ${clanName}`, 'error');
+        return;
+    }
+
+    const battles = json.data.Battles ?? {};
+    const lastKey = Object.keys(battles).sort().pop();
+    const contributions = lastKey ? (battles[lastKey]?.PointContributions ?? []) : [];
+    const players = contributions.map(c => ({
+        id:     String(c.UserID ?? c.userId ?? c.id ?? ''),
+        userId: String(c.UserID ?? c.userId ?? c.id ?? ''),
+        points: c.Points ?? c.points ?? 0,
+    })).filter(p => p.userId && p.userId !== '0');
+
+    // Update or add the clan in state.clans so getPlayerPointsByUserId() can find it
+    const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
+    if (existing) {
+        existing.players = players;
+    } else {
+        state.clans.push({ id: uid(), name: clanName, players, battleTotal: 0, color: '#6366f1' });
+    }
+
+    if (statusEl) statusEl.textContent = `✅ ${clanName}: ${players.length} players loaded`;
+    addLog(`📋 ${clanName} loaded: ${players.length} players`, 'success');
+    toast(`${clanName} loaded — ${players.length} players`, 'success');
 }
 
 // ── Discord ────────────────────────────────
@@ -1570,6 +1612,8 @@ document.getElementById('mon-settings-form')?.addEventListener('submit', e => {
     monitorState.webhook           = document.getElementById('mon-webhook').value.trim();
     monitorState.intervalSec       = Number(document.getElementById('mon-interval').value) || 45;
     monitorState.privateServerLink = document.getElementById('mon-ps-link').value.trim();
+    const cn = document.getElementById('mon-clan-name');
+    if (cn && cn.value.trim()) monitorState.lastClanName = cn.value.trim();
     saveMonitor();
     toast('Settings saved');
     if (monitorRunning) {

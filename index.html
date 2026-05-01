@@ -11,7 +11,7 @@
     <!-- Force reload if a newer version of app.js has been deployed -->
     <script>
     (function(){
-        var V = 33;
+        var V = 34;
         var k = '_ps99v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
@@ -36,7 +36,7 @@
             <button class="nav-btn" data-view="manage">Manage War</button>
             <button class="nav-btn" data-view="monitor">Monitor</button>
         </nav>
-        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v33</div>
+        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v34</div>
     </div>
 </header>
 
@@ -183,12 +183,12 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Clan Data <span class="optional">(load to enable point tracking)</span></label>
+                        <label>Clan Name <span class="optional">(for point tracking)</span></label>
                         <div class="mon-input-row">
-                            <span id="mon-clan-status" class="mon-server-id-text">No clan data loaded</span>
-                            <button type="button" class="btn-secondary mon-test-btn" onclick="loadClanDataForMonitoring()">Load Clans</button>
+                            <input type="text" id="mon-clan-name" placeholder="e.g. SOPU" autocomplete="off">
+                            <button type="button" class="btn-secondary mon-test-btn" onclick="loadClanDataForMonitoring()">Load</button>
                         </div>
-                        <div class="mon-cookie-hint">Add clans in Manage War first, then click Load Clans. Alert fires if a player has no point increase for 5 minutes.</div>
+                        <div id="mon-clan-status" class="mon-cookie-hint" style="margin-top:6px">No clan loaded yet. Alert fires after 5 min of no point increase.</div>
                     </div>
                     <button type="submit" class="btn-primary">Save Settings</button>
                 </form>
