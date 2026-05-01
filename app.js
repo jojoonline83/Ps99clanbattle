@@ -1401,14 +1401,28 @@ async function loadClanDataForMonitoring() {
         return;
     }
 
+    // Build points map from PointContributions (only scored members are here)
     const battles = json.data.Battles ?? {};
     const lastKey = Object.keys(battles).sort().pop();
     const contributions = lastKey ? (battles[lastKey]?.PointContributions ?? []) : [];
-    const players = contributions.map(c => ({
-        id:     String(c.UserID ?? c.userId ?? c.id ?? ''),
-        userId: String(c.UserID ?? c.userId ?? c.id ?? ''),
-        points: c.Points ?? c.points ?? 0,
-    })).filter(p => p.userId && p.userId !== '0');
+    const ptsMap = {};
+    contributions.forEach(c => {
+        const id = String(c.UserID ?? c.userId ?? c.id ?? '');
+        if (id && id !== '0') ptsMap[id] = c.Points ?? c.points ?? 0;
+    });
+
+    // Use Members list for the full roster (all members, even 0-point ones)
+    const members = json.data.Members ?? [];
+    let players;
+    if (members.length > 0) {
+        players = members.map(m => {
+            const id = String(m.UserID ?? m.userId ?? m.id ?? '');
+            return { id, userId: id, points: ptsMap[id] ?? 0 };
+        }).filter(p => p.userId && p.userId !== '0');
+    } else {
+        // Fallback: build from contributions only
+        players = Object.entries(ptsMap).map(([id, pts]) => ({ id, userId: id, points: pts }));
+    }
 
     // Update or add the clan in state.clans so getPlayerPointsByUserId() can find it
     const existing = state.clans.find(c => c.name.toLowerCase() === clanName.toLowerCase());
@@ -1418,9 +1432,12 @@ async function loadClanDataForMonitoring() {
         state.clans.push({ id: uid(), name: clanName, players, battleTotal: 0, color: '#6366f1' });
     }
 
-    if (statusEl) statusEl.textContent = `✅ ${clanName}: ${players.length} players loaded`;
-    addLog(`📋 ${clanName} loaded: ${players.length} players`, 'success');
-    toast(`${clanName} loaded — ${players.length} players`, 'success');
+    monitorState.lastClanName = clanName;
+    saveMonitor();
+
+    if (statusEl) statusEl.textContent = `✅ ${clanName}: ${players.length} members, ${Object.keys(ptsMap).length} scoring`;
+    addLog(`📋 ${clanName}: ${players.length} members loaded (${Object.keys(ptsMap).length} with points)`, 'success');
+    toast(`${clanName} loaded — ${players.length} members`, 'success');
 }
 
 // ── Discord ────────────────────────────────
