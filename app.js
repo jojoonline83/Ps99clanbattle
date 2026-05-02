@@ -1508,8 +1508,8 @@ async function runMonitorCycle() {
     try {
         await refreshClanPoints();
 
-        // 5 minutes: biggamesapi.io updates every few minutes, shorter = false positives
-        const inactiveMs = (monitorState.alertThresholdMin || 5) * 60 * 1000;
+        const thresholdMin = monitorState.alertThresholdMin || 5;
+        const inactiveMs   = thresholdMin * 60 * 1000;
 
         for (const player of players) {
             player.lastChecked = Date.now();
@@ -1549,8 +1549,9 @@ async function runMonitorCycle() {
                     player.alertSent = false;
                     if (player.status === 'disconnected') player.status = 'unknown';
                 } else {
-                    const secSince = Math.round((Date.now() - player.lastPointsChangeTime) / 1000);
-                    addLog(`📊 ${player.username}: ${currentPoints.toLocaleString()} pts (no change ${secSince}s)`, 'info');
+                    const secSince  = Math.round((Date.now() - player.lastPointsChangeTime) / 1000);
+                    const threshSec = thresholdMin * 60;
+                    addLog(`📊 ${player.username}: ${currentPoints.toLocaleString()} pts — no change ${secSince}s / ${threshSec}s (alert at ${thresholdMin}min)`, 'info');
                 }
             } else {
                 addLog(`⚠️ No clan data for ${player.username} — click Load Clans`, 'error');
@@ -1577,7 +1578,9 @@ function startMonitoring() {
 
     monitorRunning = true;
     updateMonitorBtn();
-    addLog('Monitoring started', 'success');
+    const threshold = monitorState.alertThresholdMin || 5;
+    const interval  = monitorState.intervalSec || 45;
+    addLog(`✅ Monitoring started — checking every ${interval}s, Discord alert after ${threshold}min of no point increase`, 'success');
     runMonitorCycle();
     monitorTimer = setInterval(runMonitorCycle, (monitorState.intervalSec || 45) * 1000);
 }
