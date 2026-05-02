@@ -1531,13 +1531,13 @@ async function runMonitorCycle() {
                                 (Date.now() - player.lastPointsChangeTime) > inactiveMs &&
                                 !player.alertSent;
 
-            if (isInactive) {
+            if (isInactive && monitorRunning) {
                 const secSince = Math.round((Date.now() - player.lastPointsChangeTime) / 1000);
                 player.status    = 'disconnected';
                 player.alertSent = true;
                 addLog(`⚠️ ${player.username}: no points for ${secSince}s — alert sent`, 'alert');
                 await sendDiscordAlert(player);
-                toast(`${player.username} — inactive for ${Math.round(secSince / 60)}min!`, 'error');
+                if (monitorRunning) toast(`${player.username} — inactive for ${Math.round(secSince / 60)}min!`, 'error');
                 setTimeout(() => { player.status = 'unknown'; renderMonitorPlayers(); }, 5000);
             }
 
