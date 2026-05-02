@@ -1569,6 +1569,13 @@ function startMonitoring() {
     if (!monitorState.players.length) { toast('Add players first', 'error'); return; }
     if (!monitorState.webhook)        { toast('Set a Discord webhook URL first', 'error'); return; }
 
+    // Always read current form values so Save Settings isn't required before starting
+    const intervalEl  = document.getElementById('mon-interval');
+    const thresholdEl = document.getElementById('mon-alert-threshold');
+    if (intervalEl)  monitorState.intervalSec       = Number(intervalEl.value)  || 45;
+    if (thresholdEl) monitorState.alertThresholdMin = Number(thresholdEl.value) || 5;
+    saveMonitor();
+
     monitorState.players.forEach(p => {
         p.lastKnownPoints      = null;
         p.lastPointsChangeTime = null;
@@ -1578,11 +1585,11 @@ function startMonitoring() {
 
     monitorRunning = true;
     updateMonitorBtn();
-    const threshold = monitorState.alertThresholdMin || 5;
-    const interval  = monitorState.intervalSec || 45;
+    const threshold = monitorState.alertThresholdMin;
+    const interval  = monitorState.intervalSec;
     addLog(`✅ Monitoring started — checking every ${interval}s, Discord alert after ${threshold}min of no point increase`, 'success');
     runMonitorCycle();
-    monitorTimer = setInterval(runMonitorCycle, (monitorState.intervalSec || 45) * 1000);
+    monitorTimer = setInterval(runMonitorCycle, interval * 1000);
 }
 
 function stopMonitoring() {
