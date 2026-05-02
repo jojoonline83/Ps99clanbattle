@@ -1360,12 +1360,16 @@ async function refreshClanPoints() {
                     const id = String(c.UserID ?? c.userId ?? c.id ?? '');
                     if (id && id !== '0') pts[id] = c.Points ?? c.points ?? 0;
                 });
+                let updated = 0;
                 clan.players.forEach(p => {
                     const v = pts[String(p.userId)] ?? pts[String(p.id)];
-                    if (v !== undefined) p.points = v;
+                    if (v !== undefined) { p.points = v; updated++; }
                 });
+                addLog(`🔄 ${clan.name}: refreshed ${updated}/${clan.players.length} players (${Object.keys(pts).length} in battle API)`, 'info');
                 break;
-            } catch (_) {}
+            } catch (e) {
+                addLog(`⚠️ Refresh failed for ${clan.name}: ${e.message}`, 'error');
+            }
         }
     }
 }
@@ -1539,12 +1543,18 @@ async function runMonitorCycle() {
 
             if (hasPointData) {
                 if (player.lastKnownPoints == null) {
-                    player.lastKnownPoints     = currentPoints;
-                    player.lastPointsChangeTime = Date.now();
-                    addLog(`📊 ${player.username}: tracking started at ${currentPoints.toLocaleString()} pts`, 'info');
+                    if (currentPoints > 0) {
+                        // Only start the timer once we see actual points — 0 means the
+                        // battle API hasn't picked up this player yet, not that they stopped.
+                        player.lastKnownPoints      = currentPoints;
+                        player.lastPointsChangeTime = Date.now();
+                        addLog(`📊 ${player.username}: tracking started at ${currentPoints.toLocaleString()} pts`, 'info');
+                    } else {
+                        addLog(`📊 ${player.username}: 0 pts — waiting for battle API to register their score…`, 'info');
+                    }
                 } else if (pointsIncreased) {
                     addLog(`📈 ${player.username}: ${Number(player.lastKnownPoints).toLocaleString()} → ${currentPoints.toLocaleString()} pts`, 'success');
-                    player.lastKnownPoints     = currentPoints;
+                    player.lastKnownPoints      = currentPoints;
                     player.lastPointsChangeTime = Date.now();
                     player.alertSent = false;
                     if (player.status === 'disconnected') player.status = 'unknown';
