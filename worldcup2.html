@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>PS99 World Cup II Tracker</title>
+    <link rel="stylesheet" href="worldcup2.css?v=1">
+    <script>
+    (function(){
+        var V = 1;
+        var k = '_ps99wc2v';
+        var stored = localStorage.getItem(k);
+        localStorage.setItem(k, V);
+        if (stored && stored !== String(V)) {
+            var url = location.href.split('?')[0] + '?nocache=' + V;
+            location.replace(url);
+        }
+    })();
+    </script>
+</head>
+<body>
+
+<header>
+    <div class="header-content">
+        <div class="logo">
+            <span class="logo-icon">🏆</span>
+            <h1>PS99 World Cup II</h1>
+        </div>
+        <nav>
+            <button class="nav-btn active" data-view="standings">Standings</button>
+            <button class="nav-btn" data-view="matches">Matches</button>
+            <button class="nav-btn" data-view="manage">Manage</button>
+        </nav>
+        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v1</div>
+    </div>
+</header>
+
+<main>
+
+    <!-- ── Standings ── -->
+    <div id="standings-view" class="view active">
+        <div class="event-info-bar">
+            <div>
+                <div class="event-title" id="event-title">PS99 World Cup II</div>
+                <div class="event-dates" id="event-dates"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+                <span id="event-status-badge"></span>
+            </div>
+        </div>
+        <div id="groups-container"></div>
+    </div>
+
+    <!-- ── Team Detail ── -->
+    <div id="team-detail-view" class="view">
+        <div class="detail-top-bar">
+            <button class="back-btn" id="team-back-btn">← Back to Standings</button>
+        </div>
+        <div class="team-detail-header" id="team-detail-header">
+            <div class="team-detail-title-row">
+                <div class="team-detail-color-bar" id="team-detail-color-bar"></div>
+                <div>
+                    <h2 id="team-detail-name"></h2>
+                    <div id="team-detail-group" class="team-detail-sub-line"></div>
+                </div>
+            </div>
+            <div class="team-detail-stats">
+                <div class="stat-box"><span class="stat-label">Played</span><span class="stat-value" id="td-played"></span></div>
+                <div class="stat-box"><span class="stat-label">W-D-L</span><span class="stat-value" id="td-wdl"></span></div>
+                <div class="stat-box"><span class="stat-label">Goal Diff</span><span class="stat-value" id="td-gd"></span></div>
+                <div class="stat-box"><span class="stat-label">Points</span><span class="stat-value" id="td-pts"></span></div>
+                <div class="stat-box"><span class="stat-label">Group Rank</span><span class="stat-value" id="td-rank"></span></div>
+            </div>
+        </div>
+        <h3 class="sub-heading">Match History</h3>
+        <div class="players-table-container">
+            <table class="players-table">
+                <thead>
+                    <tr><th>Date</th><th>Opponent</th><th>Score</th><th>Result</th></tr>
+                </thead>
+                <tbody id="team-matches-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Matches ── -->
+    <div id="matches-view" class="view">
+        <h2 class="view-title">Match Results</h2>
+
+        <div class="manage-card">
+            <h3 id="match-form-title">Record Match Result</h3>
+            <form id="match-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Group</label>
+                        <select id="match-group" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="match-date">
+                    </div>
+                </div>
+                <div class="form-row match-team-row">
+                    <div class="form-group">
+                        <label>Home Team</label>
+                        <select id="match-home" required></select>
+                    </div>
+                    <div class="form-group score-group">
+                        <label>Score</label>
+                        <input type="number" id="match-home-score" min="0" placeholder="0" required>
+                    </div>
+                    <span class="vs-sep">–</span>
+                    <div class="form-group score-group">
+                        <label>Score</label>
+                        <input type="number" id="match-away-score" min="0" placeholder="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Away Team</label>
+                        <select id="match-away" required></select>
+                    </div>
+                </div>
+                <div class="modal-actions" style="justify-content:flex-start;gap:10px">
+                    <button type="submit" class="btn-primary" id="match-submit-btn">Save Result</button>
+                    <button type="button" class="btn-secondary" id="match-cancel-edit" style="display:none">Cancel Edit</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="manage-card full-width">
+            <div class="manage-card-header">
+                <h3>All Results</h3>
+                <select id="match-filter-group" class="sort-select"></select>
+            </div>
+            <div id="matches-list" class="manage-clans-list"></div>
+        </div>
+    </div>
+
+    <!-- ── Manage ── -->
+    <div id="manage-view" class="view">
+        <h2 class="view-title">Manage World Cup II</h2>
+        <div class="manage-grid">
+
+            <div class="manage-card">
+                <h3>Event Settings</h3>
+                <form id="event-form">
+                    <div class="form-group">
+                        <label>Event Name</label>
+                        <input type="text" id="event-name" placeholder="e.g. PS99 World Cup II">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" id="event-start">
+                        </div>
+                        <div class="form-group">
+                            <label>End Date</label>
+                            <input type="date" id="event-end">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary">Save Event Info</button>
+                </form>
+            </div>
+
+            <div class="manage-card">
+                <h3>Add Group</h3>
+                <form id="add-group-form">
+                    <div class="form-group">
+                        <label>Group Name</label>
+                        <input type="text" id="new-group-name" placeholder="e.g. Group A" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Add Group</button>
+                </form>
+                <div id="groups-list" class="manage-clans-list" style="margin-top:14px"></div>
+            </div>
+
+            <!-- Live PS99 Clan Lookup -->
+            <div class="manage-card full-width live-card">
+                <div class="manage-card-header">
+                    <h3>🎮 Live PS99 Clan Lookup</h3>
+                    <span class="live-dot"></span>
+                </div>
+                <p class="live-desc">Look up a clan's official tag from the PS99 API to use when adding a team below. World Cup match results aren't published via any public API, so scores are always entered manually.</p>
+                <div class="live-actions">
+                    <div class="live-manual">
+                        <input type="text" id="lookup-clan-name" class="live-input" placeholder="Enter clan name e.g. GODS">
+                        <button class="btn-live-secondary" id="lookup-clan-btn">Look Up</button>
+                    </div>
+                </div>
+                <div id="lookup-status" class="import-status"></div>
+            </div>
+
+            <div class="manage-card full-width">
+                <h3>Add Team</h3>
+                <form id="add-team-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Team / Clan Name</label>
+                            <input type="text" id="new-team-name" placeholder="Team Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Tag <span class="optional">(optional)</span></label>
+                            <input type="text" id="new-team-tag" placeholder="e.g. [GODS]" maxlength="12">
+                        </div>
+                        <div class="form-group">
+                            <label>Group</label>
+                            <select id="new-team-group" required></select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Color</label>
+                        <div class="color-options" id="color-options"></div>
+                    </div>
+                    <button type="submit" class="btn-primary">Add Team</button>
+                </form>
+            </div>
+
+            <div class="manage-card full-width">
+                <div class="manage-card-header">
+                    <h3>Teams</h3>
+                    <span id="team-count-badge" class="count-badge">0</span>
+                </div>
+                <div id="manage-teams-list" class="manage-clans-list"></div>
+            </div>
+
+        </div>
+    </div>
+
+</main>
+
+<!-- ── Confirm Dialog ── -->
+<div class="modal-overlay" id="confirm-overlay">
+    <div class="modal confirm-modal">
+        <div class="modal-header">
+            <h3 id="confirm-title">Confirm</h3>
+        </div>
+        <p id="confirm-message" style="color:var(--text-secondary);margin-bottom:24px;font-size:14px"></p>
+        <div class="modal-actions">
+            <button class="btn-secondary" id="confirm-cancel">Cancel</button>
+            <button class="btn-danger" id="confirm-ok">Delete</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="worldcup2.js?v=1"></script>
+</body>
+</html>
