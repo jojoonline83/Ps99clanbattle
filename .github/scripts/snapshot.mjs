@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 
 const API_BASE           = 'https://ps99.biggamesapi.io/api';
-const HISTORY_FILE       = 'history.json';
-const RESOLVED_CACHE_FILE = 'resolved_names.json';
+const SUBDIR             = 'luckyblox';
+const HISTORY_FILE       = `${SUBDIR}/history.json`;
+const RESOLVED_CACHE_FILE = `${SUBDIR}/resolved_names.json`;
 const RETENTION_MS       = 95 * 60 * 1000;
 const TOP_PAGES          = 10;
 const PAGE_SIZE          = 50;
@@ -242,6 +243,7 @@ if (needsResolve.size) {
     Object.assign(resolvedCache, resolved);
     console.log(`Resolved ${Object.keys(resolved).length}/${needsResolve.size} new display names (${Object.keys(resolvedCache).length} cached total).`);
 }
+mkdirSync(SUBDIR, { recursive: true });
 writeFileSync(RESOLVED_CACHE_FILE, JSON.stringify(resolvedCache));
 
 let history = [];

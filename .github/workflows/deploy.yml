@@ -21,8 +21,13 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin gh-pages || true
           git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
-          FILES="index.html players.html style.css app.js players.js .nojekyll .github/scripts/snapshot.mjs .github/workflows/snapshot.yml .github/workflows/deploy.yml"
+          mkdir -p luckyblox
+          FILES="index.html players.html style.css app.js players.js"
           for f in $FILES; do
+            git show ${{ github.sha }}:"$f" > "luckyblox/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+          done
+          KEEP=".nojekyll .github/scripts/snapshot.mjs .github/workflows/snapshot.yml .github/workflows/deploy.yml"
+          for f in $KEEP; do
             git checkout ${{ github.sha }} -- "$f" 2>/dev/null || echo "Skipping $f (not in source)"
           done
           git add -A
