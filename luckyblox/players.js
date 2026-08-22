@@ -13,12 +13,12 @@ let state = { mode: 'top', searchResults: [], colorByUser: {}, nextColorIdx: 0 }
 const DISPLAY_LIMIT = 1000;
 
 function save() {
-    try { localStorage.setItem('ps99_clanbattle_pinata_players_v1', JSON.stringify(state)); } catch (_) {}
+    try { localStorage.setItem('ps99_clanbattle_luckyblox_players_v1', JSON.stringify(state)); } catch (_) {}
 }
 
 function load() {
     try {
-        const raw = localStorage.getItem('ps99_clanbattle_pinata_players_v1');
+        const raw = localStorage.getItem('ps99_clanbattle_luckyblox_players_v1');
         if (raw) state = { ...state, ...JSON.parse(raw) };
     } catch (_) {}
 }

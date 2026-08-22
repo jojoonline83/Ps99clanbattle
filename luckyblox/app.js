@@ -1,8 +1,8 @@
 'use strict';
 
-document.title = 'PS99 Clan Battle — Pinata [v1]';
+document.title = 'PS99 Clan Battle — Lucky Blox [v1]';
 
-const STORAGE_KEY  = 'ps99_clanbattle_pinata_v1';
+const STORAGE_KEY  = 'ps99_clanbattle_luckyblox_v1';
 const API_BASE     = 'https://ps99.biggamesapi.io/api';
 const CORS_PROXIES = [
     'https://corsproxy.io/?url=',
@@ -199,7 +199,7 @@ function renderClanDetail() {
         return;
     }
 
-    document.getElementById('clan-detail-sub').textContent = 'Clan Battle — Pinata';
+    document.getElementById('clan-detail-sub').textContent = 'Clan Battle — Lucky Blox';
     document.getElementById('cd-pts').textContent = fmt(detail.Points);
     const rosterCount = detail.roster ? detail.roster.length : 0;
     document.getElementById('cd-roster').textContent = `${rosterCount}`;
