@@ -6,13 +6,12 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>PS99 Clan Battle Tracker</title>
-    <link rel="stylesheet" href="style.css?v=14">
-    <!-- Force reload if a newer version of app.js has been deployed -->
+    <title>PS99 Clan Battle &#8212; Pinata</title>
+    <link rel="stylesheet" href="style.css?v=1">
     <script>
     (function(){
-        var V = 40;
-        var k = '_ps99v';
+        var V = 1;
+        var k = '_ps99cb_clanbattle_v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
         if (stored && stored !== String(V)) {
@@ -27,346 +26,97 @@
 <header>
     <div class="header-content">
         <div class="logo">
-            <span class="logo-icon">⚔️</span>
-            <h1>PS99 Clan Battle Tracker</h1>
+            <span class="logo-icon">&#127882;</span>
+            <h1>PS99 Clan Battle &#8212; Pinata</h1>
         </div>
-        <nav>
-            <button class="nav-btn active" data-view="dashboard">Dashboard</button>
-            <button class="nav-btn" data-view="compare">Compare</button>
-            <button class="nav-btn" data-view="manage">Manage War</button>
-            <button class="nav-btn" data-view="monitor">Monitor</button>
-        </nav>
-        <div id="app-version" style="font-size:11px;color:#6366f1;font-weight:700;align-self:center;background:rgba(99,102,241,.15);padding:2px 7px;border-radius:4px">v40</div>
+        <div style="display:flex;align-items:center;gap:10px">
+            <span id="event-status-badge"></span>
+            <button class="btn-refresh" id="refresh-btn">&#128260; Refresh</button>
+        </div>
     </div>
 </header>
 
+<nav class="page-nav">
+    <a href="index.html" class="nav-tab active">Clan Leaderboard</a>
+    <a href="players.html" class="nav-tab">Individual Players</a>
+</nav>
+
 <main>
 
-    <!-- ── Dashboard ── -->
-    <div id="dashboard-view" class="view active">
-        <div class="war-info-bar">
+    <!-- Leaderboard -->
+    <div id="leaderboard-view" class="view active">
+        <div class="event-info-bar">
             <div>
-                <div class="war-title" id="current-war-title">PS99 Clan Battle</div>
-                <div class="war-dates" id="current-war-dates"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-                <div id="war-status-badge"></div>
-                <button class="btn-refresh" id="dashboard-refresh-btn" title="Refresh live data">🔄 Refresh</button>
-            </div>
-        </div>
-        <div id="clans-grid"></div>
-    </div>
-
-    <!-- ── Clan Detail ── -->
-    <div id="clan-detail-view" class="view">
-        <div class="detail-top-bar">
-            <button class="back-btn" id="back-btn">← Back to Dashboard</button>
-            <button class="btn-refresh" id="detail-refresh-btn" title="Refresh points">🔄 Refresh</button>
-        </div>
-        <div class="clan-detail-header" id="clan-detail-header">
-            <div class="clan-detail-title-row">
-                <div class="clan-detail-color-bar" id="clan-detail-color-bar"></div>
-                <div>
-                    <h2 id="clan-detail-name"></h2>
-                    <div id="clan-detail-tag" class="clan-detail-tag-line"></div>
-                </div>
-            </div>
-            <div class="clan-detail-stats">
-                <div class="stat-box">
-                    <span class="stat-label">Total Points</span>
-                    <span class="stat-value" id="clan-detail-points"></span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Players</span>
-                    <span class="stat-value" id="clan-detail-players"></span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">War Rank</span>
-                    <span class="stat-value" id="clan-detail-rank"></span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Avg/Hr</span>
-                    <span class="stat-value" id="clan-detail-avg"></span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Since Refresh</span>
-                    <span class="stat-value" id="clan-detail-delta"></span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Last 5m</span>
-                    <span class="stat-value" id="clan-detail-delta5m"></span>
-                </div>
+                <div class="event-title">Clan Battle Leaderboard</div>
+                <div class="event-dates" id="event-dates">Top 500 clans, refreshed every ~10 minutes in the background</div>
             </div>
         </div>
 
-        <div class="table-toolbar">
-            <input type="text" id="player-search" class="search-input" placeholder="Search players…">
-            <select id="sort-select" class="sort-select">
-                <option value="points-desc">Points ↓</option>
-                <option value="points-asc">Points ↑</option>
-                <option value="name-asc">Name A–Z</option>
-                <option value="contribution-desc">Contribution ↓</option>
-            </select>
+        <div class="manage-card live-card">
+            <div class="manage-card-header">
+                <h3>&#128269; Search Clans</h3>
+                <span class="live-dot"></span>
+            </div>
+            <p class="live-desc">Search any clan by name, even if it's not in the Top 500.</p>
+            <div class="live-manual">
+                <input type="text" id="search-clan-name" class="live-input" placeholder="Enter clan name">
+                <button class="btn-live-secondary" id="search-clan-btn">Search</button>
+                <button class="btn-secondary" id="clear-search-btn" style="display:none">Clear</button>
+            </div>
+            <div id="search-status" class="import-status"></div>
         </div>
 
+        <h3 class="sub-heading" id="leaderboard-heading">Top 500</h3>
         <div class="players-table-container">
             <table class="players-table">
                 <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Player</th>
-                        <th>Points</th>
-                    </tr>
+                    <tr><th>#</th><th>Clan</th><th>Members</th><th>Points</th></tr>
                 </thead>
-                <tbody id="players-tbody"></tbody>
+                <tbody id="leaderboard-tbody"></tbody>
             </table>
         </div>
     </div>
 
-    <!-- ── Compare ── -->
-    <div id="compare-view" class="view">
-        <h2 class="view-title">Side-by-Side Clan Comparison</h2>
-        <div class="compare-selectors">
-            <div class="selector-box">
-                <label>Clan A</label>
-                <select id="compare-clan-1" class="clan-select"></select>
+    <!-- Clan Detail -->
+    <div id="clan-detail-view" class="view">
+        <div class="detail-top-bar">
+            <button class="back-btn" id="clan-back-btn">&larr; Back to Leaderboard</button>
+        </div>
+        <div class="team-detail-header" id="clan-detail-header">
+            <div class="team-detail-title-row">
+                <div class="team-detail-color-bar" id="clan-detail-color-bar"></div>
+                <div>
+                    <h2 id="clan-detail-name"></h2>
+                    <div id="clan-detail-sub" class="team-detail-sub-line"></div>
+                </div>
             </div>
-            <div class="vs-badge">VS</div>
-            <div class="selector-box">
-                <label>Clan B</label>
-                <select id="compare-clan-2" class="clan-select"></select>
+            <div class="team-detail-stats">
+                <div class="stat-box"><span class="stat-label">Rank</span><span class="stat-value" id="cd-rank"></span></div>
+                <div class="stat-box"><span class="stat-label">Points</span><span class="stat-value" id="cd-pts"></span><span class="stat-asof" id="cd-pts-asof"></span></div>
+                <div class="stat-box"><span class="stat-label">Roster</span><span class="stat-value" id="cd-roster"></span></div>
+            </div>
+            <div class="team-detail-stats" style="margin-top:16px">
+                <div class="stat-box"><span class="stat-label">Last 10m</span><span class="stat-value" id="cd-delta-10m">&mdash;</span><span class="stat-asof" id="cd-delta-10m-asof"></span></div>
+                <div class="stat-box"><span class="stat-label">Last 30m</span><span class="stat-value" id="cd-delta-30m">&mdash;</span><span class="stat-asof" id="cd-delta-30m-asof"></span></div>
+                <div class="stat-box"><span class="stat-label">Last 1Hr</span><span class="stat-value" id="cd-delta-1h">&mdash;</span><span class="stat-asof" id="cd-delta-1h-asof"></span></div>
             </div>
         </div>
-        <button class="btn-primary compare-btn" id="do-compare-btn">Compare Clans</button>
-        <div id="compare-results" class="compare-results"></div>
-    </div>
-
-    <!-- ── Monitor ── -->
-    <div id="monitor-view" class="view">
-        <div class="mon-page-header">
-            <h2 class="view-title" style="margin-bottom:0">Server Monitor</h2>
-            <div class="mon-header-controls">
-                <div id="mon-global-indicator" class="mon-global-status mon-global-idle">
-                    <span class="mon-global-dot"></span>
-                    <span id="mon-global-text">Idle</span>
-                </div>
-                <button id="mon-toggle-btn" class="btn-primary" onclick="toggleMonitoring()">&#9654; Start Monitoring</button>
-                <button class="btn-secondary" onclick="checkNow()">Check Now</button>
-                <button class="btn-secondary" onclick="testDisconnectAlert()">Test Alert</button>
-            </div>
-        </div>
-
-        <div class="monitor-grid">
-            <!-- Settings -->
-            <div class="manage-card">
-                <h3>Settings</h3>
-                <form id="mon-settings-form">
-                    <div class="form-group">
-                        <label>Discord Webhook URL</label>
-                        <div class="mon-input-row">
-                            <input type="url" id="mon-webhook" placeholder="https://discord.com/api/webhooks/...">
-                            <button type="button" class="btn-secondary mon-test-btn" onclick="testWebhook()">Test</button>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>PS99 Private Server Link <span class="optional">(rejoin link sent in alert)</span></label>
-                        <input type="url" id="mon-ps-link" placeholder="https://www.roblox.com/games/8737899170/...?privateServerLinkCode=...">
-                    </div>
-                    <div class="form-group">
-                        <label>Check Interval <span class="optional">(how often to refresh points)</span></label>
-                        <select id="mon-interval">
-                            <option value="30">Every 30 seconds</option>
-                            <option value="45" selected>Every 45 seconds</option>
-                            <option value="60">Every 1 minute</option>
-                            <option value="120">Every 2 minutes</option>
-                            <option value="300">Every 5 minutes</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Discord Alert After <span class="optional">(no point increase for…)</span></label>
-                        <select id="mon-alert-threshold">
-                            <option value="3">3 minutes</option>
-                            <option value="5" selected>5 minutes</option>
-                            <option value="10">10 minutes</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Clan Name <span class="optional">(for point tracking)</span></label>
-                        <div class="mon-input-row">
-                            <input type="text" id="mon-clan-name" placeholder="e.g. SOPU" autocomplete="off">
-                            <button type="button" class="btn-secondary mon-test-btn" onclick="loadClanDataForMonitoring()">Load</button>
-                        </div>
-                        <div id="mon-clan-status" class="mon-cookie-hint" style="margin-top:6px">No clan loaded yet. Alert fires after 5 min of no point increase.</div>
-                    </div>
-                    <button type="submit" class="btn-primary">Save Settings</button>
-                </form>
-            </div>
-
-            <!-- Add Player -->
-            <div class="manage-card">
-                <h3>Add Player</h3>
-                <form id="mon-add-form">
-                    <div class="form-group">
-                        <label>Roblox User ID <span class="optional">(numbers only)</span></label>
-                        <input type="text" id="mon-add-userid" placeholder="e.g. 123456789" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Roblox Username</label>
-                        <input type="text" id="mon-add-username" placeholder="e.g. PlayerName" required>
-                    </div>
-                    <button type="submit" id="mon-add-btn" class="btn-primary">+ Add Player</button>
-                </form>
-                <div class="mon-note">
-                    Find your User ID: go to your Roblox profile — the number in the URL is your ID.<br>
-                    e.g. roblox.com/users/<strong>123456789</strong>/profile
-                </div>
-            </div>
-
-            <!-- Players List -->
-            <div class="manage-card full-width">
-                <div class="manage-card-header">
-                    <h3>Monitored Players</h3>
-                    <span id="mon-player-count" class="count-badge">0</span>
-                </div>
-                <div id="mon-players-list" class="mon-players-list"></div>
-            </div>
-
-            <!-- Activity Log -->
-            <div class="manage-card full-width">
-                <div class="manage-card-header">
-                    <h3>Activity Log</h3>
-                    <button class="btn-secondary mon-clear-btn" onclick="clearMonitorLog()">Clear</button>
-                </div>
-                <div id="mon-log" class="mon-log"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Manage War ── -->
-    <div id="manage-view" class="view">
-        <h2 class="view-title">Manage War</h2>
-        <div class="manage-grid">
-
-            <div class="manage-card">
-                <h3>War Settings</h3>
-                <form id="war-form">
-                    <div class="form-group">
-                        <label>War Name</label>
-                        <input type="text" id="war-name" placeholder="e.g. War #215">
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Start Date</label>
-                            <input type="date" id="war-start">
-                        </div>
-                        <div class="form-group">
-                            <label>End Date</label>
-                            <input type="date" id="war-end">
-                        </div>
-                    </div>
-                    <button type="submit" class="btn-primary">Save War Info</button>
-                </form>
-            </div>
-
-            <div class="manage-card">
-                <h3>Add New Clan</h3>
-                <form id="add-clan-form">
-                    <div class="form-group">
-                        <label>Clan Name</label>
-                        <input type="text" id="new-clan-name" placeholder="Clan Name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Clan Tag <span class="optional">(optional)</span></label>
-                        <input type="text" id="new-clan-tag" placeholder="e.g. [GODS]" maxlength="12">
-                    </div>
-                    <div class="form-group">
-                        <label>Color</label>
-                        <div class="color-options" id="color-options"></div>
-                    </div>
-                    <button type="submit" class="btn-primary">Add Clan</button>
-                </form>
-            </div>
-
-            <!-- Live PS99 Data Import -->
-            <div class="manage-card full-width live-card">
-                <div class="manage-card-header">
-                    <h3>🎮 Live PS99 Battle Data</h3>
-                    <span class="live-dot"></span>
-                </div>
-                <p class="live-desc">Auto-fetch the current active clan battle from the official PS99 API.</p>
-                <div class="live-actions">
-                    <button class="btn-live" id="fetch-active-battle-btn">⚡ Fetch Active Battle</button>
-                    <div class="live-divider">or import a specific clan</div>
-                    <div class="live-manual">
-                        <input type="text" id="fetch-clan-name" class="live-input" placeholder="Enter clan name e.g. GODS">
-                        <button class="btn-live-secondary" id="fetch-clan-btn">Import</button>
-                    </div>
-                </div>
-                <div id="import-status" class="import-status"></div>
-            </div>
-
-            <div class="manage-card full-width">
-                <div class="manage-card-header">
-                    <h3>Clans in This War</h3>
-                    <span id="clan-count-badge" class="count-badge">0</span>
-                </div>
-                <div id="manage-clans-list" class="manage-clans-list"></div>
-            </div>
-
+        <h3 class="sub-heading">Roster</h3>
+        <div class="roster-delta-note" id="roster-delta-note"></div>
+        <div class="players-table-container">
+            <table class="players-table roster-table">
+                <thead>
+                    <tr><th>#</th><th>Display Name</th><th>Points</th><th>&Delta;10m</th><th>&Delta;30m</th><th>&Delta;1Hr</th></tr>
+                </thead>
+                <tbody id="roster-tbody"></tbody>
+            </table>
         </div>
     </div>
 
 </main>
 
-<!-- ── Player Modal ── -->
-<div class="modal-overlay" id="modal-overlay">
-    <div class="modal">
-        <div class="modal-header">
-            <h3 id="modal-title">Add Player</h3>
-            <button class="modal-close" id="modal-close">×</button>
-        </div>
-        <form id="player-form">
-            <div class="form-group">
-                <label>Roblox Username</label>
-                <input type="text" id="player-username" placeholder="Username" required>
-            </div>
-            <div class="form-group">
-                <label>Points / Damage</label>
-                <input type="number" id="player-points" placeholder="0" min="0" required>
-            </div>
-            <div class="form-group">
-                <label>Role</label>
-                <select id="player-role">
-                    <option value="Member">Member</option>
-                    <option value="Officer">Officer</option>
-                    <option value="Co-Leader">Co-Leader</option>
-                    <option value="Leader">Leader</option>
-                </select>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary" id="modal-cancel">Cancel</button>
-                <button type="submit" class="btn-primary" id="modal-submit">Save</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- ── Confirm Dialog ── -->
-<div class="modal-overlay" id="confirm-overlay">
-    <div class="modal confirm-modal">
-        <div class="modal-header">
-            <h3 id="confirm-title">Confirm</h3>
-        </div>
-        <p id="confirm-message" style="color:var(--text-secondary);margin-bottom:24px;font-size:14px"></p>
-        <div class="modal-actions">
-            <button class="btn-secondary" id="confirm-cancel">Cancel</button>
-            <button class="btn-danger" id="confirm-ok">Delete</button>
-        </div>
-    </div>
-</div>
-
 <div id="toast" class="toast"></div>
 
-<script src="app.js?v=32"></script>
+<script src="app.js?v=1"></script>
 </body>
 </html>
