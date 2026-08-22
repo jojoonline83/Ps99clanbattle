@@ -258,3 +258,94 @@ history = history.filter(entry => now - entry.ts <= RETENTION_MS);
 writeFileSync(HISTORY_FILE, JSON.stringify(history));
 const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
 console.log(`Snapshot recorded: ${clans.length} clans with roster detail in ${elapsedSec}s, ${history.length} snapshots retained.`);
+
+const ALERT_FILE = `${SUBDIR}/alert_state.json`;
+const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
+const WATCH_PLAYER = 'jojo8';
+
+async function checkAndAlert() {
+    if (!DISCORD_WEBHOOK) {
+        console.log('No DISCORD_WEBHOOK set — skipping alert check.');
+        return;
+    }
+    if (history.length < 2) {
+        console.log('Not enough snapshots for delta — skipping alert.');
+        return;
+    }
+
+    function findPlayer(snap) {
+        for (const clan of snap.clans) {
+            for (const p of clan.roster || []) {
+                const name = (resolvedCache[p.UserID] || p.DisplayName || '').toLowerCase();
+                if (name === WATCH_PLAYER) return { ...p, DisplayName: resolvedCache[p.UserID] || p.DisplayName, clan: clan.Name };
+            }
+        }
+        return null;
+    }
+
+    const latest = history[history.length - 1];
+    const prev = history[history.length - 2];
+    const cur = findPlayer(latest);
+    const old = findPlayer(prev);
+
+    if (!cur) {
+        console.log(`Player "${WATCH_PLAYER}" not found in latest snapshot.`);
+        return;
+    }
+
+    const delta = cur.Points - (old ? old.Points : 0);
+    const minsApart = Math.round((latest.ts - prev.ts) / 60000);
+    console.log(`Alert check: ${WATCH_PLAYER} = ${cur.Points} pts, delta = ${delta} over ~${minsApart}m`);
+
+    let alertState = {};
+    if (existsSync(ALERT_FILE)) {
+        try { alertState = JSON.parse(readFileSync(ALERT_FILE, 'utf8')); } catch (_) { alertState = {}; }
+    }
+
+    if (delta > 0) {
+        if (alertState.sent) {
+            console.log(`Points increasing again — clearing alert state.`);
+            alertState = {};
+            writeFileSync(ALERT_FILE, JSON.stringify(alertState));
+        }
+        return;
+    }
+
+    if (alertState.sent) {
+        console.log(`Alert already sent — not repeating until points increase.`);
+        return;
+    }
+
+    const embed = {
+        title: '⚠️ Inactivity Alert — Lucky Blox',
+        color: 0xff4444,
+        fields: [
+            { name: 'Player', value: cur.DisplayName, inline: true },
+            { name: 'Clan', value: cur.clan, inline: true },
+            { name: 'Points', value: cur.Points.toLocaleString(), inline: true },
+            { name: 'No gain for', value: `~${minsApart} minutes`, inline: true },
+        ],
+        timestamp: new Date().toISOString(),
+    };
+
+    try {
+        const res = await fetch(DISCORD_WEBHOOK, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ embeds: [embed] }),
+            signal: AbortSignal.timeout(10000),
+        });
+        if (res.ok) {
+            console.log('Discord alert sent.');
+            alertState.sent = true;
+            alertState.ts = Date.now();
+            writeFileSync(ALERT_FILE, JSON.stringify(alertState));
+        } else {
+            console.error(`Discord webhook returned ${res.status}`);
+        }
+    } catch (e) {
+        console.error('Discord alert failed:', e.message);
+    }
+}
+
+await checkAndAlert();
