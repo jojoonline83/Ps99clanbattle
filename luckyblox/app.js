@@ -17,6 +17,9 @@ const PALETTE = [
 
 let historyData = [];
 let resolvedNamesCache = {};
+let liveClanPoints = {};
+let livePointsTs = 0;
+const LIVE_POLL_MS = 30_000;
 
 let state = {
     mode: 'top',
@@ -73,6 +76,37 @@ function topClans() {
 
 function displayedClans() {
     return state.mode === 'search' ? state.searchResults : topClans();
+}
+
+function getLivePoints(clanName) {
+    const key = clanName.toLowerCase();
+    return liveClanPoints[key] !== undefined ? liveClanPoints[key] : null;
+}
+
+function getClanPoints(clan) {
+    return getLivePoints(clan.Name) ?? clan.Points;
+}
+
+async function fetchLiveClanPoints() {
+    const pages = 10;
+    const pageSize = 50;
+    const fetches = Array.from({ length: pages }, (_, i) =>
+        apiFetch(`${API_BASE}/clans?page=${i + 1}&pageSize=${pageSize}&sort=Points&sortOrder=desc`).catch(() => null)
+    );
+    const results = await Promise.all(fetches);
+    const newMap = {};
+    for (const json of results) {
+        if (!json?.data || !Array.isArray(json.data)) continue;
+        for (const c of json.data) {
+            const name = c.Name || c.name || c.ClanName || c.clanName;
+            const pts = Number(c.Points ?? c.points ?? c.Score ?? c.score ?? 0);
+            if (name) newMap[name.toLowerCase()] = pts;
+        }
+    }
+    if (Object.keys(newMap).length > 0) {
+        liveClanPoints = newMap;
+        livePointsTs = Date.now();
+    }
 }
 
 let toastTimer = null;
@@ -134,12 +168,20 @@ async function resolveRosterNames(roster, clanName) {
 
 function renderLeaderboard() {
     const badge = document.getElementById('event-status-badge');
-    const snap = latestSnapshot();
-    badge.innerHTML = snap
-        ? `<span class="status-pill status-active">⚡ Updated ${new Date(snap.ts).toLocaleTimeString()}</span>`
-        : '';
+    if (livePointsTs) {
+        badge.innerHTML = `<span class="status-pill status-active">🔴 Live ${new Date(livePointsTs).toLocaleTimeString()}</span>`;
+    } else {
+        const snap = latestSnapshot();
+        badge.innerHTML = snap
+            ? `<span class="status-pill status-active">⚡ Updated ${new Date(snap.ts).toLocaleTimeString()}</span>`
+            : '';
+    }
 
-    const list = displayedClans();
+    let list = [...displayedClans()];
+    if (state.mode !== 'search' && Object.keys(liveClanPoints).length > 0) {
+        list.sort((a, b) => getClanPoints(b) - getClanPoints(a));
+    }
+
     document.getElementById('leaderboard-heading').textContent =
         state.mode === 'search'
             ? `Search Results (${state.total} match${state.total === 1 ? '' : 'es'})`
@@ -158,12 +200,13 @@ function renderLeaderboard() {
     tbody.innerHTML = list.map((c, idx) => {
         const color = colorFor(c.Name);
         const members = c.roster ? c.roster.length : (c.Members || 0);
+        const pts = getClanPoints(c);
         return `
       <tr onclick="showClanDetail('${esc(c.Name).replace(/'/g, "\\'")}')" style="cursor:pointer">
         <td class="player-rank">${idx + 1}</td>
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> ${esc(c.Name)}</td>
         <td>${members}</td>
-        <td class="player-points" style="color:${color}">${fmt(c.Points)}</td>
+        <td class="player-points" style="color:${color}">${fmt(pts)}</td>
       </tr>`;
     }).join('');
 }
@@ -200,11 +243,13 @@ function renderClanDetail() {
     }
 
     document.getElementById('clan-detail-sub').textContent = 'Clan Battle — Lucky Blox';
-    document.getElementById('cd-pts').textContent = fmt(detail.Points);
+    const livePts = getLivePoints(detail.Name);
+    document.getElementById('cd-pts').textContent = fmt(livePts ?? detail.Points);
     const rosterCount = detail.roster ? detail.roster.length : 0;
     document.getElementById('cd-roster').textContent = `${rosterCount}`;
-    document.getElementById('cd-pts-asof').textContent = ui.livePointsAsOf
-        ? `🔴 Live as of ${new Date(ui.livePointsAsOf).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+    const asOfTs = ui.livePointsAsOf || livePointsTs;
+    document.getElementById('cd-pts-asof').textContent = asOfTs
+        ? `🔴 Live as of ${new Date(asOfTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
         : (latestSnapshot() ? `Snapshot as of ${new Date(latestSnapshot().ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — refreshing…` : '');
 
     const snap10 = renderDeltaStat('cd-delta-10m', detail, 10 * 60_000, 11 * 60_000);
@@ -361,7 +406,7 @@ async function refreshAll({ silent = false } = {}) {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
 
     try {
-        await loadHistory();
+        await Promise.all([loadHistory(), fetchLiveClanPoints()]);
         if (state.mode === 'top') renderLeaderboard();
         if (ui.currentClanName) {
             const stillTracked = topClans().find(c => c.Name.toLowerCase() === ui.currentClanName.toLowerCase());
@@ -380,6 +425,16 @@ async function refreshAll({ silent = false } = {}) {
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
     }
+}
+
+async function pollLivePoints() {
+    try {
+        await fetchLiveClanPoints();
+        if (state.mode === 'top') renderLeaderboard();
+        if (ui.currentClanName) {
+            refreshClanDetailLive(ui.currentClanName);
+        }
+    } catch (_) {}
 }
 
 async function searchClans() {
@@ -621,7 +676,8 @@ document.getElementById('search-clan-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); searchClans(); }
 });
 
-setInterval(() => refreshAll({ silent: true }), 10 * 60_000);
+setInterval(() => loadHistory().then(() => { if (state.mode === 'top') renderLeaderboard(); }).catch(() => {}), 10 * 60_000);
+setInterval(pollLivePoints, LIVE_POLL_MS);
 
 load();
 renderLeaderboard();
