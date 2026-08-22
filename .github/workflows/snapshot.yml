@@ -24,7 +24,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             node .github/scripts/snapshot.mjs
-            git add -f luckyblox/history.json luckyblox/resolved_names.json luckyblox/alert_state.json
+            git add -f luckyblox/history.json luckyblox/resolved_names.json
+            git add -f luckyblox/alert_state.json 2>/dev/null || true
             git diff --cached --quiet && exit 0
             git commit -m "chore: snapshot data"
             git push && exit 0
