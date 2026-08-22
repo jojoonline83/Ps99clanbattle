@@ -2,6 +2,7 @@ name: Snapshot Data
 
 on:
   workflow_dispatch:
+    inputs: {}
 
 permissions:
   contents: write
