@@ -29,6 +29,9 @@ if (!battleData || Date.now() / 1000 > battleData.FinishTime) {
     console.log('No active clan battle — skipping snapshot.');
     process.exit(0);
 }
+console.log('=== REWARDS STRUCTURE ===');
+console.log(JSON.stringify(battleData.Rewards, null, 2).slice(0, 3000));
+console.log('=== END REWARDS ===');
 
 async function mapWithConcurrency(items, limit, fn) {
     const results = new Array(items.length);
