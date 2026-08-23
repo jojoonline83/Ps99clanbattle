@@ -194,7 +194,7 @@ function renderLeaderboard() {
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> <div>${nameHtml}</div></td>
         <td style="font-size:12px;color:var(--text-secondary)">${esc(p.Clan || '—')}</td>
         <td class="player-points" style="color:${color}">${fmt(p.Points)}</td>
-        <td style="font-size:12px;color:var(--text-secondary)">${stageLabel(p.Points)}</td>
+        <td style="font-size:12px;color:var(--text-secondary)">${fmt(p.Points * 5)}</td>
         <td style="color:${d10.color};font-size:12px">${d10.text}</td>
         <td style="color:${d30.color};font-size:12px">${d30.text}</td>
         <td style="color:${d1h.color};font-size:12px">${d1h.text}</td>
