@@ -332,7 +332,7 @@ async function checkAndAlert() {
         const res = await fetch(DISCORD_WEBHOOK, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] }),
+            body: JSON.stringify({ content: '<@967089828837597264>', embeds: [embed] }),
             signal: AbortSignal.timeout(10000),
         });
         if (res.ok) {
