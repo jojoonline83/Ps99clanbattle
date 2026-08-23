@@ -29,6 +29,11 @@ if (!battleData || Date.now() / 1000 > battleData.FinishTime) {
     console.log('No active clan battle — skipping snapshot.');
     process.exit(0);
 }
+console.log('=== BATTLE CONFIG KEYS ===');
+console.log(JSON.stringify(Object.keys(battleData), null, 2));
+if (battleData.Goals) console.log('Goals sample:', JSON.stringify(battleData.Goals.slice?.(0, 3) || battleData.Goals, null, 2));
+if (battleData.Stages) console.log('Stages sample:', JSON.stringify(Object.keys(battleData.Stages).slice(0, 3).reduce((o,k) => (o[k]=battleData.Stages[k],o), {}), null, 2));
+console.log('=== END BATTLE CONFIG ===');
 
 async function mapWithConcurrency(items, limit, fn) {
     const results = new Array(items.length);
@@ -57,7 +62,25 @@ function isUnresolvedName(entry) {
     return entry.DisplayName === String(entry.UserID);
 }
 
+let _debugDumped = false;
 function buildClanFromDetail(detail, summary) {
+    if (!_debugDumped) {
+        _debugDumped = true;
+        console.log('=== FIRST CLAN DETAIL KEYS ===');
+        console.log(JSON.stringify(Object.keys(detail), null, 2));
+        const battles = detail.Battles || detail.battles || {};
+        const bk = Object.keys(battles);
+        if (bk.length) {
+            const bd = battles[bk[bk.length - 1]];
+            console.log('Battle entry keys:', JSON.stringify(Object.keys(bd), null, 2));
+            const contribs = bd.PointContributions || bd.pointContributions || bd.Contributions || bd.contributions || [];
+            if (Array.isArray(contribs) && contribs.length) {
+                console.log('First contrib row keys:', JSON.stringify(Object.keys(contribs[0]), null, 2));
+                console.log('First contrib row:', JSON.stringify(contribs[0], null, 2));
+            }
+        }
+        console.log('=== END FIRST CLAN DETAIL ===');
+    }
     const members = Array.isArray(detail.Members) ? detail.Members : [];
     const battles = detail.Battles || detail.battles || {};
     const battleKeys = Object.keys(battles);
