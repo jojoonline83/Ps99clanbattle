@@ -287,7 +287,7 @@ function renderClanDetail() {
                 <td class="player-rank">${idx + 1}</td>
                 <td class="player-name">${esc(p.DisplayName)}</td>
                 <td class="player-points" style="color:${color}">${fmt(p.Points)}</td>
-                <td style="font-size:12px;color:var(--text-secondary)">${stageLabel(p.Points)}</td>
+                <td style="font-size:12px;color:var(--text-secondary)">${fmt(p.Points * 5)}</td>
                 <td style="color:${d10.color}">${d10.text}</td>
                 <td style="color:${d30.color}">${d30.text}</td>
                 <td style="color:${d1h.color}">${d1h.text}</td>

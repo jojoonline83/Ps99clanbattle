@@ -131,7 +131,7 @@ function renderLeaderboard() {
 
     const tbody = document.getElementById('leaderboard-tbody');
     if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted)">
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted)">
           ${state.mode === 'search' ? 'No players matched your search.' : 'No data yet — waiting for first snapshot.'}
         </td></tr>`;
         return;
@@ -157,6 +157,7 @@ function renderLeaderboard() {
         <td style="font-size:12px;color:var(--text-secondary)">${esc(p.Clan || '—')}</td>
         <td style="font-weight:700;color:${color}">${sl.rebirth}</td>
         <td style="font-weight:600;color:var(--text-primary)">${sl.stage}</td>
+        <td style="font-weight:600;color:var(--gold)">${fmt(p.Points * 5)}</td>
         <td style="font-size:12px;color:var(--text-secondary)">${fmt(p.Points)}</td>
         <td style="color:${d10.color};font-size:12px">${d10.text}</td>
         <td style="color:${d30.color};font-size:12px">${d30.text}</td>
