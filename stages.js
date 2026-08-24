@@ -207,7 +207,7 @@ function extractClanPlayers(raw, clanName) {
 }
 
 async function fetchLivePlayerData(maxClans) {
-    const pages = 10;
+    const pages = 3;
     const pageSize = 50;
     const fetches = Array.from({ length: pages }, (_, i) =>
         apiFetch(`${API_BASE}/clans?page=${i + 1}&pageSize=${pageSize}&sort=Points&sortOrder=desc`).catch(() => null)
@@ -227,7 +227,7 @@ async function fetchLivePlayerData(maxClans) {
 
     const toFetch = clanNames.slice(0, maxClans);
     const newMap = livePlayerMap ? new Map(livePlayerMap) : new Map();
-    const CONCURRENCY = 5;
+    const CONCURRENCY = 10;
     let idx = 0;
     let fetched = 0;
 
@@ -379,7 +379,7 @@ async function refreshAll({ silent = false } = {}) {
         renderLeaderboard();
         if (!silent) toast('Fetching live data from API…', 'success');
         if (btn) btn.textContent = '⏳ Live data…';
-        const count = await fetchLivePlayerData(30);
+        const count = await fetchLivePlayerData(10);
         renderLeaderboard();
         if (state.mode === 'search') {
             const queryLower = document.getElementById('search-player-name')?.value?.toLowerCase() || '';
@@ -408,7 +408,7 @@ async function refreshAll({ silent = false } = {}) {
 
 async function pollLive() {
     try {
-        const count = await fetchLivePlayerData(30);
+        const count = await fetchLivePlayerData(10);
         if (count > 0) renderLeaderboard();
     } catch (_) {}
 }
