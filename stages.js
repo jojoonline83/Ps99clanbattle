@@ -377,7 +377,7 @@ async function refreshAll({ silent = false } = {}) {
         renderLeaderboard();
         if (!silent) toast('Fetching live data from API…', 'success');
         if (btn) btn.textContent = '⏳ Live data…';
-        const count = await fetchLivePlayerData(100);
+        const count = await fetchLivePlayerData(30);
         renderLeaderboard();
         if (state.mode === 'search') {
             const queryLower = document.getElementById('search-player-name')?.value?.toLowerCase() || '';
@@ -406,7 +406,7 @@ async function refreshAll({ silent = false } = {}) {
 
 async function pollLive() {
     try {
-        const count = await fetchLivePlayerData(50);
+        const count = await fetchLivePlayerData(30);
         if (count > 0) renderLeaderboard();
     } catch (_) {}
 }
