@@ -1,5 +1,11 @@
 'use strict';
 
+const API_BASE = 'https://ps99.biggamesapi.io/api';
+const CORS_PROXIES = [
+    'https://corsproxy.io/?url=',
+    'https://api.allorigins.win/raw?url=',
+];
+
 const PALETTE = [
     '#6366f1', '#ec4899', '#10b981', '#f59e0b',
     '#ef4444', '#06b6d4', '#8b5cf6', '#f97316',
@@ -9,8 +15,11 @@ const PALETTE = [
 let historyData = [];
 let playerSnapshots = [];
 let resolvedNamesCache = {};
+let livePlayerMap = null;
+let liveTs = 0;
 let state = { mode: 'top', searchResults: [], colorByUser: {}, nextColorIdx: 0 };
 const DISPLAY_LIMIT = 1000;
+const LIVE_POLL_MS = 30_000;
 
 function save() {
     try { localStorage.setItem('ps99_clanbattle_luckyblox_stages_v1', JSON.stringify(state)); } catch (_) {}
@@ -47,6 +56,16 @@ function colorFor(userId) {
     return state.colorByUser[key];
 }
 
+function firstDefined(...args) {
+    for (const a of args) if (a !== undefined && a !== null) return a;
+    return undefined;
+}
+
+function asNumber(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
 function resolveDisplayName(p) {
     if (p.DisplayName && p.DisplayName !== String(p.UserID)) return p.DisplayName;
     return resolvedNamesCache[p.UserID] || resolvedNamesCache[String(p.UserID)] || String(p.UserID);
@@ -72,8 +91,16 @@ function extractPlayers(snapshot) {
 }
 
 function latestPlayerSnapshot() { return playerSnapshots.length ? playerSnapshots[playerSnapshots.length - 1] : null; }
-function allPlayers() { return latestPlayerSnapshot()?.players?.list || []; }
-function topPlayers() { return allPlayers().slice(0, DISPLAY_LIMIT); }
+
+function allPlayers() {
+    if (livePlayerMap) {
+        const list = [...livePlayerMap.values()].sort((a, b) => b.Points - a.Points);
+        return list.slice(0, DISPLAY_LIMIT);
+    }
+    return latestPlayerSnapshot()?.players?.list?.slice(0, DISPLAY_LIMIT) || [];
+}
+
+function topPlayers() { return allPlayers(); }
 function displayedPlayers() { return state.mode === 'search' ? state.searchResults : topPlayers(); }
 
 let toastTimer = null;
@@ -114,11 +141,117 @@ function playerDelta(userId, currentPoints, windowMs, toleranceMs) {
     };
 }
 
+async function apiFetch(url) {
+    const isValid = d => d && typeof d === 'object' && d.status === 'ok';
+    try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (res.ok) { const d = await res.json(); if (isValid(d)) return d; }
+    } catch (_) {}
+    for (const proxy of CORS_PROXIES) {
+        try {
+            const res = await fetch(proxy + encodeURIComponent(url), { signal: AbortSignal.timeout(20000) });
+            if (res.ok) { const d = await res.json(); if (isValid(d)) return d; }
+        } catch (_) {}
+    }
+    return null;
+}
+
+async function fetchLivePlayerData() {
+    const pages = 10;
+    const pageSize = 50;
+    const fetches = Array.from({ length: pages }, (_, i) =>
+        apiFetch(`${API_BASE}/clans?page=${i + 1}&pageSize=${pageSize}&sort=Points&sortOrder=desc`).catch(() => null)
+    );
+    const results = await Promise.all(fetches);
+    const clanNames = [];
+    for (const json of results) {
+        if (!json?.data || !Array.isArray(json.data)) continue;
+        for (const c of json.data) {
+            const name = firstDefined(c.Name, c.name, c.ClanName, c.clanName);
+            const pts = asNumber(firstDefined(c.Points, c.points, c.Score, c.score, c.Total, c.total));
+            if (name && pts > 0) clanNames.push(name);
+        }
+    }
+
+    if (!clanNames.length) return;
+
+    const newMap = new Map();
+    const CONCURRENCY = 10;
+    let idx = 0;
+    async function worker() {
+        while (idx < clanNames.length) {
+            const name = clanNames[idx++];
+            const detail = await apiFetch(`${API_BASE}/clan/${encodeURIComponent(name)}`);
+            if (!detail?.data) continue;
+            const raw = detail.data;
+            const members = Array.isArray(raw.Members) ? raw.Members : [];
+            const battles = raw.Battles || raw.battles || {};
+            const battleKeys = Object.keys(battles);
+            let battleData = battleKeys.length ? battles[battleKeys[battleKeys.length - 1]] : null;
+
+            let contribRows = [];
+            if (battleData) {
+                contribRows = firstDefined(
+                    battleData.PointContributions, battleData.pointContributions,
+                    battleData.Contributions, battleData.contributions,
+                    battleData.Contribution, battleData.contribution
+                ) || [];
+                if (!Array.isArray(contribRows)) contribRows = [];
+            }
+            if (!contribRows.length) {
+                const fb = firstDefined(
+                    raw.Contribution?.Battle, raw.contribution?.battle,
+                    raw.Contributions?.Battle, raw.contributions?.battle
+                );
+                if (Array.isArray(fb)) contribRows = fb;
+            }
+
+            const contribByUser = {};
+            for (const c of contribRows) {
+                const uid = asNumber(firstDefined(c.UserID, c.UserId, c.user_id, c.userId, c.id));
+                const pts = asNumber(firstDefined(c.Points, c.points, c.TotalPoints, c.total_points, c.Score, c.score, c.Value, c.value));
+                if (uid > 0) contribByUser[uid] = pts;
+            }
+
+            const clanName = raw.Name || raw.name || name;
+            const seen = new Set();
+            for (const m of members) {
+                const uid = asNumber(firstDefined(m.UserID, m.UserId, m.user_id, m.userId, m.id));
+                if (uid <= 0) continue;
+                seen.add(uid);
+                const pts = contribByUser[uid] ?? 0;
+                const existing = newMap.get(uid);
+                if (!existing || pts > existing.Points) {
+                    let displayName = resolvedNamesCache[uid] || resolvedNamesCache[String(uid)] || String(uid);
+                    newMap.set(uid, { UserID: uid, DisplayName: displayName, Points: pts, Clan: clanName });
+                }
+            }
+            for (const [uidStr, pts] of Object.entries(contribByUser)) {
+                const uid = Number(uidStr);
+                if (!seen.has(uid) && uid > 0) {
+                    const existing = newMap.get(uid);
+                    if (!existing || pts > existing.Points) {
+                        let displayName = resolvedNamesCache[uid] || resolvedNamesCache[uidStr] || uidStr;
+                        newMap.set(uid, { UserID: uid, DisplayName: displayName, Points: pts, Clan: clanName });
+                    }
+                }
+            }
+        }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, clanNames.length) }, () => worker()));
+
+    if (newMap.size > 0) {
+        livePlayerMap = newMap;
+        liveTs = Date.now();
+    }
+}
+
 function renderLeaderboard() {
     const badge = document.getElementById('event-status-badge');
-    const snap = latestPlayerSnapshot();
-    badge.innerHTML = snap
-        ? `<span class="status-pill status-active">⚡ Updated ${new Date(snap.ts).toLocaleTimeString()}</span>`
+    const ts = liveTs || latestPlayerSnapshot()?.ts;
+    badge.innerHTML = ts
+        ? `<span class="status-pill status-active">${liveTs ? '🔴 Live' : '⚡'} Updated ${new Date(ts).toLocaleTimeString()}</span>`
         : '';
 
     const list = displayedPlayers();
@@ -227,12 +360,22 @@ async function refreshAll({ silent = false } = {}) {
     try {
         await loadHistory();
         renderLeaderboard();
-        if (!silent) toast(`Loaded ${fmt(allPlayers().length)} players`, 'success');
+        if (!silent) toast('Fetching live data…', 'success');
+        await fetchLivePlayerData();
+        renderLeaderboard();
+        if (!silent) toast(`Live: ${fmt(allPlayers().length)} players updated`, 'success');
     } catch (err) {
         if (!silent) toast(err.message || 'Failed to refresh', 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
     }
+}
+
+async function pollLive() {
+    try {
+        await fetchLivePlayerData();
+        renderLeaderboard();
+    } catch (_) {}
 }
 
 document.getElementById('refresh-btn').addEventListener('click', () => refreshAll({ silent: false }));
@@ -241,7 +384,7 @@ document.getElementById('clear-search-btn').addEventListener('click', clearSearc
 document.getElementById('search-player-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); searchPlayers(); }
 });
-setInterval(() => refreshAll({ silent: true }), 10 * 60_000);
+setInterval(pollLive, LIVE_POLL_MS);
 
 load();
 renderLeaderboard();
