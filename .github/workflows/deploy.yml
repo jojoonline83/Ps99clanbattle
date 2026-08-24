@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: deploy-gh-pages
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -33,4 +37,4 @@ jobs:
           git add -A
           git diff --cached --quiet && echo "No changes to deploy" && exit 0
           git commit -m "deploy: sync from ${{ github.ref_name }}"
-          git push origin gh-pages
+          git push --force origin gh-pages
