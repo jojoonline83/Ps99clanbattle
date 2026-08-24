@@ -427,16 +427,17 @@ async function refreshAll({ silent = false } = {}) {
                 }
             }
         }
-        if (!silent) toast(`Loaded ${fmt(topClans().length)} clans`, 'success');
+        if (!silent) toast('Fetching live points…', 'success');
+        if (btn) btn.textContent = '⏳ Live data…';
+        await fetchLiveClanPoints();
+        if (state.mode === 'top') renderLeaderboard();
+        if (ui.currentClanName) refreshClanDetailLive(ui.currentClanName);
+        if (!silent) toast(`Loaded ${fmt(topClans().length)} clans (live)`, 'success');
     } catch (err) {
         if (!silent) toast(err.message || 'Failed to refresh', 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
     }
-    fetchLiveClanPoints().then(() => {
-        if (state.mode === 'top') renderLeaderboard();
-        if (ui.currentClanName) refreshClanDetailLive(ui.currentClanName);
-    }).catch(() => {});
 }
 
 async function pollLivePoints() {
