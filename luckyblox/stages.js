@@ -19,7 +19,7 @@ let livePlayerMap = null;
 let liveTs = 0;
 let state = { mode: 'top', searchResults: [], colorByUser: {}, nextColorIdx: 0 };
 const DISPLAY_LIMIT = 1000;
-const LIVE_POLL_MS = 30_000;
+const LIVE_POLL_MS = 60_000;
 
 function save() {
     try { localStorage.setItem('ps99_clanbattle_luckyblox_stages_v1', JSON.stringify(state)); } catch (_) {}
@@ -93,7 +93,7 @@ function extractPlayers(snapshot) {
 function latestPlayerSnapshot() { return playerSnapshots.length ? playerSnapshots[playerSnapshots.length - 1] : null; }
 
 function allPlayers() {
-    if (livePlayerMap) {
+    if (livePlayerMap && livePlayerMap.size > 0) {
         const list = [...livePlayerMap.values()].sort((a, b) => b.Points - a.Points);
         return list.slice(0, DISPLAY_LIMIT);
     }
@@ -156,7 +156,57 @@ async function apiFetch(url) {
     return null;
 }
 
-async function fetchLivePlayerData() {
+function extractClanPlayers(raw, clanName) {
+    const members = Array.isArray(raw.Members) ? raw.Members : [];
+    const battles = raw.Battles || raw.battles || {};
+    const battleKeys = Object.keys(battles);
+    let battleData = battleKeys.length ? battles[battleKeys[battleKeys.length - 1]] : null;
+
+    let contribRows = [];
+    if (battleData) {
+        contribRows = firstDefined(
+            battleData.PointContributions, battleData.pointContributions,
+            battleData.Contributions, battleData.contributions,
+            battleData.Contribution, battleData.contribution
+        ) || [];
+        if (!Array.isArray(contribRows)) contribRows = [];
+    }
+    if (!contribRows.length) {
+        const fb = firstDefined(
+            raw.Contribution?.Battle, raw.contribution?.battle,
+            raw.Contributions?.Battle, raw.contributions?.battle
+        );
+        if (Array.isArray(fb)) contribRows = fb;
+    }
+
+    const contribByUser = {};
+    for (const c of contribRows) {
+        const uid = asNumber(firstDefined(c.UserID, c.UserId, c.user_id, c.userId, c.id));
+        const pts = asNumber(firstDefined(c.Points, c.points, c.TotalPoints, c.total_points, c.Score, c.score, c.Value, c.value));
+        if (uid > 0) contribByUser[uid] = pts;
+    }
+
+    const players = [];
+    const seen = new Set();
+    for (const m of members) {
+        const uid = asNumber(firstDefined(m.UserID, m.UserId, m.user_id, m.userId, m.id));
+        if (uid <= 0) continue;
+        seen.add(uid);
+        const pts = contribByUser[uid] ?? 0;
+        const displayName = resolvedNamesCache[uid] || resolvedNamesCache[String(uid)] || String(uid);
+        players.push({ UserID: uid, DisplayName: displayName, Points: pts, Clan: clanName });
+    }
+    for (const [uidStr, pts] of Object.entries(contribByUser)) {
+        const uid = Number(uidStr);
+        if (!seen.has(uid) && uid > 0) {
+            const displayName = resolvedNamesCache[uid] || resolvedNamesCache[uidStr] || uidStr;
+            players.push({ UserID: uid, DisplayName: displayName, Points: pts, Clan: clanName });
+        }
+    }
+    return players;
+}
+
+async function fetchLivePlayerData(maxClans) {
     const pages = 10;
     const pageSize = 50;
     const fetches = Array.from({ length: pages }, (_, i) =>
@@ -173,86 +223,51 @@ async function fetchLivePlayerData() {
         }
     }
 
-    if (!clanNames.length) return;
+    if (!clanNames.length) return 0;
 
-    const newMap = new Map();
-    const CONCURRENCY = 10;
+    const toFetch = clanNames.slice(0, maxClans);
+    const newMap = livePlayerMap ? new Map(livePlayerMap) : new Map();
+    const CONCURRENCY = 5;
     let idx = 0;
+    let fetched = 0;
+
     async function worker() {
-        while (idx < clanNames.length) {
-            const name = clanNames[idx++];
-            const detail = await apiFetch(`${API_BASE}/clan/${encodeURIComponent(name)}`);
-            if (!detail?.data) continue;
-            const raw = detail.data;
-            const members = Array.isArray(raw.Members) ? raw.Members : [];
-            const battles = raw.Battles || raw.battles || {};
-            const battleKeys = Object.keys(battles);
-            let battleData = battleKeys.length ? battles[battleKeys[battleKeys.length - 1]] : null;
-
-            let contribRows = [];
-            if (battleData) {
-                contribRows = firstDefined(
-                    battleData.PointContributions, battleData.pointContributions,
-                    battleData.Contributions, battleData.contributions,
-                    battleData.Contribution, battleData.contribution
-                ) || [];
-                if (!Array.isArray(contribRows)) contribRows = [];
-            }
-            if (!contribRows.length) {
-                const fb = firstDefined(
-                    raw.Contribution?.Battle, raw.contribution?.battle,
-                    raw.Contributions?.Battle, raw.contributions?.battle
-                );
-                if (Array.isArray(fb)) contribRows = fb;
-            }
-
-            const contribByUser = {};
-            for (const c of contribRows) {
-                const uid = asNumber(firstDefined(c.UserID, c.UserId, c.user_id, c.userId, c.id));
-                const pts = asNumber(firstDefined(c.Points, c.points, c.TotalPoints, c.total_points, c.Score, c.score, c.Value, c.value));
-                if (uid > 0) contribByUser[uid] = pts;
-            }
-
-            const clanName = raw.Name || raw.name || name;
-            const seen = new Set();
-            for (const m of members) {
-                const uid = asNumber(firstDefined(m.UserID, m.UserId, m.user_id, m.userId, m.id));
-                if (uid <= 0) continue;
-                seen.add(uid);
-                const pts = contribByUser[uid] ?? 0;
-                const existing = newMap.get(uid);
-                if (!existing || pts > existing.Points) {
-                    let displayName = resolvedNamesCache[uid] || resolvedNamesCache[String(uid)] || String(uid);
-                    newMap.set(uid, { UserID: uid, DisplayName: displayName, Points: pts, Clan: clanName });
-                }
-            }
-            for (const [uidStr, pts] of Object.entries(contribByUser)) {
-                const uid = Number(uidStr);
-                if (!seen.has(uid) && uid > 0) {
-                    const existing = newMap.get(uid);
-                    if (!existing || pts > existing.Points) {
-                        let displayName = resolvedNamesCache[uid] || resolvedNamesCache[uidStr] || uidStr;
-                        newMap.set(uid, { UserID: uid, DisplayName: displayName, Points: pts, Clan: clanName });
+        while (idx < toFetch.length) {
+            const name = toFetch[idx++];
+            try {
+                const detail = await apiFetch(`${API_BASE}/clan/${encodeURIComponent(name)}`);
+                if (!detail?.data) continue;
+                const clanName = detail.data.Name || detail.data.name || name;
+                const players = extractClanPlayers(detail.data, clanName);
+                for (const p of players) {
+                    const existing = newMap.get(p.UserID);
+                    if (!existing || p.Points > existing.Points) {
+                        newMap.set(p.UserID, p);
                     }
                 }
-            }
+                fetched++;
+            } catch (_) {}
         }
     }
 
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, clanNames.length) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, toFetch.length) }, () => worker()));
 
-    if (newMap.size > 0) {
+    if (fetched > 0) {
         livePlayerMap = newMap;
         liveTs = Date.now();
     }
+    return fetched;
 }
 
 function renderLeaderboard() {
     const badge = document.getElementById('event-status-badge');
     const ts = liveTs || latestPlayerSnapshot()?.ts;
-    badge.innerHTML = ts
-        ? `<span class="status-pill status-active">${liveTs ? '🔴 Live' : '⚡'} Updated ${new Date(ts).toLocaleTimeString()}</span>`
-        : '';
+    if (ts) {
+        const label = liveTs ? '🔴 Live' : '⚡ Snapshot';
+        badge.innerHTML = `<span class="status-pill status-active">${label} ${new Date(ts).toLocaleTimeString()}</span>`;
+    } else {
+        badge.innerHTML = '';
+    }
 
     const list = displayedPlayers();
     document.getElementById('leaderboard-heading').textContent =
@@ -360,10 +375,28 @@ async function refreshAll({ silent = false } = {}) {
     try {
         await loadHistory();
         renderLeaderboard();
-        if (!silent) toast('Fetching live data…', 'success');
-        await fetchLivePlayerData();
+        if (!silent) toast('Fetching live data from API…', 'success');
+        if (btn) btn.textContent = '⏳ Live data…';
+        const count = await fetchLivePlayerData(100);
         renderLeaderboard();
-        if (!silent) toast(`Live: ${fmt(allPlayers().length)} players updated`, 'success');
+        if (state.mode === 'search') {
+            const queryLower = document.getElementById('search-player-name')?.value?.toLowerCase() || '';
+            if (queryLower) {
+                state.searchResults = allPlayers().filter(p =>
+                    p.DisplayName.toLowerCase().includes(queryLower) ||
+                    String(p.UserID) === queryLower ||
+                    (p.Clan && p.Clan.toLowerCase().includes(queryLower))
+                );
+            }
+            renderLeaderboard();
+        }
+        if (!silent) {
+            if (count > 0) {
+                toast(`Live: ${fmt(allPlayers().length)} players from ${count} clans`, 'success');
+            } else {
+                toast(`Showing snapshot data (API unavailable)`, 'error');
+            }
+        }
     } catch (err) {
         if (!silent) toast(err.message || 'Failed to refresh', 'error');
     } finally {
@@ -373,8 +406,8 @@ async function refreshAll({ silent = false } = {}) {
 
 async function pollLive() {
     try {
-        await fetchLivePlayerData();
-        renderLeaderboard();
+        const count = await fetchLivePlayerData(50);
+        if (count > 0) renderLeaderboard();
     } catch (_) {}
 }
 
