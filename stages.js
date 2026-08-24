@@ -377,13 +377,9 @@ async function refreshAll({ silent = false } = {}) {
     try {
         await loadHistory();
         renderLeaderboard();
-        if (!silent) toast(`Loaded ${fmt(allPlayers().length)} players`, 'success');
-    } catch (err) {
-        if (!silent) toast(err.message || 'Failed to refresh', 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
-    }
-    fetchLivePlayerData(30).then(count => {
+        if (!silent) toast('Fetching live data from API…', 'success');
+        if (btn) btn.textContent = '⏳ Live data…';
+        const count = await fetchLivePlayerData(30);
         renderLeaderboard();
         if (state.mode === 'search') {
             const queryLower = document.getElementById('search-player-name')?.value?.toLowerCase() || '';
@@ -396,10 +392,18 @@ async function refreshAll({ silent = false } = {}) {
                 renderLeaderboard();
             }
         }
-        if (!silent && count > 0) {
-            toast(`Live: ${fmt(allPlayers().length)} players from ${count} clans`, 'success');
+        if (!silent) {
+            if (count > 0) {
+                toast(`Live: ${fmt(allPlayers().length)} players from ${count} clans`, 'success');
+            } else {
+                toast(`Showing snapshot data (API unavailable)`, 'error');
+            }
         }
-    }).catch(() => {});
+    } catch (err) {
+        if (!silent) toast(err.message || 'Failed to refresh', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
+    }
 }
 
 async function pollLive() {
