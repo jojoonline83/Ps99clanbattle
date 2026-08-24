@@ -95,7 +95,7 @@ function getClanPoints(clan) {
 }
 
 async function fetchLiveClanPoints() {
-    const pages = 10;
+    const pages = 5;
     const pageSize = 50;
     const fetches = Array.from({ length: pages }, (_, i) =>
         apiFetch(`${API_BASE}/clans?page=${i + 1}&pageSize=${pageSize}&sort=Points&sortOrder=desc`).catch(() => null)
@@ -414,7 +414,7 @@ async function refreshAll({ silent = false } = {}) {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
 
     try {
-        await Promise.all([loadHistory(), fetchLiveClanPoints()]);
+        await loadHistory();
         if (state.mode === 'top') renderLeaderboard();
         if (ui.currentClanName) {
             const stillTracked = topClans().find(c => c.Name.toLowerCase() === ui.currentClanName.toLowerCase());
@@ -433,6 +433,10 @@ async function refreshAll({ silent = false } = {}) {
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
     }
+    fetchLiveClanPoints().then(() => {
+        if (state.mode === 'top') renderLeaderboard();
+        if (ui.currentClanName) refreshClanDetailLive(ui.currentClanName);
+    }).catch(() => {});
 }
 
 async function pollLivePoints() {
