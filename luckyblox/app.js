@@ -411,28 +411,13 @@ function playerDelta(detail, userId, currentPoints, windowMs, toleranceMs) {
 
 async function refreshAll({ silent = false } = {}) {
     const btn = document.getElementById('refresh-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Live data…'; }
 
     try {
-        await loadHistory();
-        if (state.mode === 'top') renderLeaderboard();
-        if (ui.currentClanName) {
-            const stillTracked = topClans().find(c => c.Name.toLowerCase() === ui.currentClanName.toLowerCase());
-            if (stillTracked) {
-                ui.currentClanDetail = stillTracked;
-                const idx = topClans().indexOf(stillTracked);
-                if (idx !== -1) {
-                    ui.currentRank = idx + 1;
-                    renderClanDetail();
-                }
-            }
-        }
-        if (!silent) toast('Fetching live points…', 'success');
-        if (btn) btn.textContent = '⏳ Live data…';
         await fetchLiveClanPoints();
         if (state.mode === 'top') renderLeaderboard();
         if (ui.currentClanName) refreshClanDetailLive(ui.currentClanName);
-        if (!silent) toast(`Loaded ${fmt(topClans().length)} clans (live)`, 'success');
+        if (!silent) toast('Live points updated', 'success');
     } catch (err) {
         if (!silent) toast(err.message || 'Failed to refresh', 'error');
     } finally {
@@ -693,5 +678,10 @@ setInterval(() => loadHistory().then(() => { if (state.mode === 'top') renderLea
 setInterval(pollLivePoints, LIVE_POLL_MS);
 
 load();
-renderLeaderboard();
-refreshAll({ silent: false });
+loadHistory().then(() => {
+    renderLeaderboard();
+    refreshAll({ silent: false });
+}).catch(() => {
+    renderLeaderboard();
+    refreshAll({ silent: false });
+});

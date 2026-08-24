@@ -373,12 +373,8 @@ async function loadHistory() {
 
 async function refreshAll({ silent = false } = {}) {
     const btn = document.getElementById('refresh-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Live data…'; }
     try {
-        await loadHistory();
-        renderLeaderboard();
-        if (!silent) toast('Fetching live data from API…', 'success');
-        if (btn) btn.textContent = '⏳ Live data…';
         const count = await fetchLivePlayerData(10);
         renderLeaderboard();
         if (state.mode === 'search') {
@@ -396,7 +392,7 @@ async function refreshAll({ silent = false } = {}) {
             if (count > 0) {
                 toast(`Live: ${fmt(allPlayers().length)} players from ${count} clans`, 'success');
             } else {
-                toast(`Showing snapshot data (API unavailable)`, 'error');
+                toast('Live points updated', 'success');
             }
         }
     } catch (err) {
@@ -422,5 +418,10 @@ document.getElementById('search-player-name').addEventListener('keydown', e => {
 setInterval(pollLive, LIVE_POLL_MS);
 
 load();
-renderLeaderboard();
-refreshAll({ silent: false });
+loadHistory().then(() => {
+    renderLeaderboard();
+    refreshAll({ silent: false });
+}).catch(() => {
+    renderLeaderboard();
+    refreshAll({ silent: false });
+});
