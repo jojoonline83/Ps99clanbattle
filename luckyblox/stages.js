@@ -286,12 +286,14 @@ function renderLeaderboard() {
     }
 
     const globalList = allPlayers();
+    const snapPlayers = latestPlayerSnapshot()?.players?.byId;
     tbody.innerHTML = list.map((p, idx) => {
         const color = colorFor(p.UserID);
         const sl = stageLabel(p.Points);
-        const d10 = playerDelta(p.UserID, p.Points, 10 * 60_000, 11 * 60_000);
-        const d30 = playerDelta(p.UserID, p.Points, 30 * 60_000, 8  * 60_000);
-        const d1h = playerDelta(p.UserID, p.Points, 60 * 60_000, 12 * 60_000);
+        const snapPts = snapPlayers?.get(p.UserID)?.Points ?? p.Points;
+        const d10 = playerDelta(p.UserID, snapPts, 10 * 60_000, 11 * 60_000);
+        const d30 = playerDelta(p.UserID, snapPts, 30 * 60_000, 8  * 60_000);
+        const d1h = playerDelta(p.UserID, snapPts, 60 * 60_000, 12 * 60_000);
         const globalRank = state.mode === 'search' ? globalList.findIndex(g => g.UserID === p.UserID) + 1 : idx + 1;
         const rankLabel = globalRank > 0 ? globalRank : '—';
         const isResolved = p.DisplayName !== String(p.UserID);
