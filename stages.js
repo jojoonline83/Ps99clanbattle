@@ -93,11 +93,18 @@ function extractPlayers(snapshot) {
 function latestPlayerSnapshot() { return playerSnapshots.length ? playerSnapshots[playerSnapshots.length - 1] : null; }
 
 function allPlayers() {
-    if (livePlayerMap && livePlayerMap.size > 0) {
-        const list = [...livePlayerMap.values()].sort((a, b) => b.Points - a.Points);
-        return list.slice(0, DISPLAY_LIMIT);
+    const snapList = latestPlayerSnapshot()?.players?.list || [];
+    if (!livePlayerMap || livePlayerMap.size === 0) return snapList.slice(0, DISPLAY_LIMIT);
+    const merged = new Map();
+    for (const p of snapList) merged.set(p.UserID, { ...p });
+    for (const [uid, p] of livePlayerMap) {
+        const existing = merged.get(uid);
+        if (!existing || p.Points > existing.Points) {
+            merged.set(uid, { ...p, DisplayName: p.DisplayName || existing?.DisplayName || String(uid) });
+        }
     }
-    return latestPlayerSnapshot()?.players?.list?.slice(0, DISPLAY_LIMIT) || [];
+    const list = [...merged.values()].sort((a, b) => b.Points - a.Points);
+    return list.slice(0, DISPLAY_LIMIT);
 }
 
 function topPlayers() { return allPlayers(); }
