@@ -284,7 +284,18 @@ async function checkAndAlert() {
     }
 
     const latest = history[history.length - 1];
-    const prev = history[history.length - 2];
+    const ALERT_WINDOW_MS = 20 * 60_000;
+    let prev = null;
+    for (const snap of history) {
+        if (snap === latest) continue;
+        if (latest.ts - snap.ts >= ALERT_WINDOW_MS) {
+            if (!prev || snap.ts > prev.ts) prev = snap;
+        }
+    }
+    if (!prev) {
+        console.log('No snapshot ≥20 minutes old yet — skipping alert.');
+        return;
+    }
     const cur = findPlayer(latest);
     const old = findPlayer(prev);
 
