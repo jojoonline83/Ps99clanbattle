@@ -1,0 +1,38 @@
+name: Snapshot League Data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Record and push snapshot (retries on conflict)
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            node .github/scripts/snapshot-league.mjs
+            git add -f luckyblox2/league_history.json luckyblox2/resolved_names.json
+            git add -f luckyblox2/alert_state.json 2>/dev/null || true
+            git diff --cached --quiet && exit 0
+            git commit -m "chore: snapshot league data"
+            git push && exit 0
+            echo "Push rejected — retrying from latest gh-pages"
+            git reset --hard HEAD~1
+            git fetch origin gh-pages
+            git reset --hard origin/gh-pages
+          done
+          echo "::error::Failed to push snapshot after 5 attempts"
+          exit 1
