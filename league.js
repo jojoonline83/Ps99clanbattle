@@ -284,10 +284,10 @@ function renderLeagueDetail() {
                 <td>${roleLabel(p.Role)}</td>
                 <td class="player-name">${esc(p.DisplayName)}</td>
                 <td class="player-points" style="color:${color}">${fmt(p.Points)}</td>
-                <td style="white-space:nowrap">${prs.text}</td>
                 <td style="color:${d10.color}">${d10.text}</td>
                 <td style="color:${d30.color}">${d30.text}</td>
                 <td style="color:${d1h.color}">${d1h.text}</td>
+                <td style="white-space:nowrap">${prs.text}</td>
               </tr>`;
           }).join('')
         : `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No roster data.</td></tr>`;
