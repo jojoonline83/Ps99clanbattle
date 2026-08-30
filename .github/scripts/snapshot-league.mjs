@@ -94,12 +94,12 @@ if (existsSync(RESOLVED_CACHE_FILE)) {
     try { resolvedCache = JSON.parse(readFileSync(RESOLVED_CACHE_FILE, 'utf8')); } catch (_) { resolvedCache = {}; }
 }
 
-const LEAGUE_PAGE_CAP = 5;
+const MAX_LEAGUES = 1000;
 const leagueSummaries = [];
 const BATCH_SIZE = 10;
 let page = 1;
 let done = false;
-while (!done) {
+while (!done && leagueSummaries.length < MAX_LEAGUES) {
     const batchPages = Array.from({ length: BATCH_SIZE }, (_, i) => page + i);
     const batchResults = await mapWithConcurrency(batchPages, LIST_CONCURRENCY, async p => {
         const json = await fetchJson(`${API_V1}/leagues?page=${p}&pageSize=${PAGE_SIZE}&sort=Points&sortOrder=desc`);
@@ -110,8 +110,8 @@ while (!done) {
         leagueSummaries.push(...pageResult);
     }
     page += BATCH_SIZE;
-    if (page > LEAGUE_PAGE_CAP) break;
 }
+if (leagueSummaries.length > MAX_LEAGUES) leagueSummaries.length = MAX_LEAGUES;
 console.log(`Fetched ${leagueSummaries.length} league summaries (${page - 1} pages scanned).`);
 
 if (!leagueSummaries.length) {
