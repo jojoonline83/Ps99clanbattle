@@ -203,7 +203,7 @@ function renderLeaderboard() {
 
     const tbody = document.getElementById('leaderboard-tbody');
     if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-muted)">
           ${state.mode === 'search' ? 'No leagues matched your search.' : 'No data yet — waiting for snapshot data.'}
         </td></tr>`;
         return;
@@ -211,14 +211,12 @@ function renderLeaderboard() {
 
     tbody.innerHTML = list.map((l, idx) => {
         const color = colorFor(l.Name);
-        const rs = rebirthStage(l.Points);
         return `
       <tr onclick="showLeagueDetail('${esc(l.Name).replace(/'/g, "\\'")}')" style="cursor:pointer">
         <td class="player-rank">${idx + 1}</td>
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> ${esc(l.Name)}</td>
         <td>${l.Members}/${l.MemberCapacity}</td>
         <td class="player-points" style="color:${color}">${fmt(l.Points)}</td>
-        <td style="white-space:nowrap">${rs.text}</td>
       </tr>`;
     }).join('');
 }
