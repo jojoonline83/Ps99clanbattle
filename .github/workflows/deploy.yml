@@ -35,7 +35,7 @@ jobs:
           for f in $LEAGUE_FILES; do
             git show ${{ github.sha }}:"$f" > "luckyblox2/$f" 2>/dev/null || echo "Skipping $f (not in source)"
           done
-          KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-league.yml .github/workflows/deploy.yml"
+          KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/deploy.yml"
           for f in $KEEP; do
             git checkout ${{ github.sha }} -- "$f" 2>/dev/null || echo "Skipping $f (not in source)"
           done
