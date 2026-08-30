@@ -34,13 +34,6 @@ function esc(str) {
     return d.innerHTML;
 }
 function fmt(n) { return (Number(n) || 0).toLocaleString(); }
-function rebirthStage(pts) {
-    const p = Number(pts) || 0;
-    const rb = Math.floor(p / 20);
-    const st = (p % 20) * 5;
-    return { rb, st, text: `RB ${fmt(rb)} · Stage ${st}` };
-}
-
 function colorFor(name) {
     const key = name.toLowerCase();
     if (!state.colorByName[key]) {
@@ -245,7 +238,7 @@ function renderLeagueDetail() {
         });
         document.getElementById('roster-delta-note').textContent = '';
         document.getElementById('roster-tbody').innerHTML =
-            `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">Loading roster…</td></tr>`;
+            `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">Loading roster…</td></tr>`;
         return;
     }
 
@@ -275,7 +268,6 @@ function renderLeagueDetail() {
             const d10 = playerDelta(detail, p.UserID, p.Points, 10 * 60_000, 11 * 60_000);
             const d30 = playerDelta(detail, p.UserID, p.Points, 30 * 60_000, 8  * 60_000);
             const d1h = playerDelta(detail, p.UserID, p.Points, 60 * 60_000, 12 * 60_000);
-            const prs = rebirthStage(p.Points);
             return `
               <tr>
                 <td>${roleLabel(p.Role)}</td>
@@ -284,10 +276,9 @@ function renderLeagueDetail() {
                 <td style="color:${d10.color}">${d10.text}</td>
                 <td style="color:${d30.color}">${d30.text}</td>
                 <td style="color:${d1h.color}">${d1h.text}</td>
-                <td style="white-space:nowrap">${prs.text}</td>
               </tr>`;
           }).join('')
-        : `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No roster data.</td></tr>`;
+        : `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">No roster data.</td></tr>`;
 }
 
 function isUnresolvedName(entity) {
