@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="style.css?v=7">
     <script>
     (function(){
-        var V = 3;
+        var V = 4;
         var k = '_ps99cb_luckyblox2_league_v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
@@ -86,6 +86,20 @@
             </div>
         </div>
 
+        <div class="manage-card live-card">
+            <div class="manage-card-header">
+                <h3>&#128269; Search Player</h3>
+                <span class="live-dot"></span>
+            </div>
+            <p class="live-desc">Search any player by display name (searches across all tracked leagues).</p>
+            <div class="live-manual">
+                <input type="text" id="search-player-name" class="live-input" placeholder="Enter player name">
+                <button class="btn-live-secondary" id="search-player-btn">Search</button>
+                <button class="btn-secondary" id="clear-player-search-btn" style="display:none">Clear</button>
+            </div>
+            <div id="player-search-status" class="import-status"></div>
+        </div>
+
         <h3 class="sub-heading" id="players-heading">Top Players</h3>
         <div class="players-table-container">
             <table class="players-table">
@@ -138,6 +152,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="league.js?v=4"></script>
+<script src="league.js?v=5"></script>
 </body>
 </html>
