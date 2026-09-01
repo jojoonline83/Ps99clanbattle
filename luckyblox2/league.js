@@ -17,6 +17,7 @@ let state = { mode: 'top', searchResults: [], total: 0, colorByName: {}, nextCol
 const DISPLAY_LIMIT = 1000;
 let ui = { currentLeagueName: null, currentLeagueDetail: null, currentRank: undefined, livePointsAsOf: undefined };
 let overallTotalCache = 0;
+let activeTab = 'leagues';
 
 function save() {
     try { localStorage.setItem('ps99_luckyblox2_league_v1', JSON.stringify(state)); } catch (_) {}
@@ -58,15 +59,39 @@ function toast(msg, type = 'success') {
     toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
+/* ── Tab switching ── */
+
+function showTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('#main-tabs .nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('main-tabs').style.display = '';
+    if (tab === 'leagues') {
+        document.getElementById('leaderboard-view').classList.add('active');
+        renderLeaderboard();
+    } else {
+        document.getElementById('players-view').classList.add('active');
+        renderPlayerRanking();
+    }
+}
+
 function showLeaderboard() {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById('leaderboard-view').classList.add('active');
-    renderLeaderboard();
+    document.getElementById('main-tabs').style.display = '';
+    if (activeTab === 'players') {
+        document.getElementById('players-view').classList.add('active');
+        renderPlayerRanking();
+    } else {
+        document.getElementById('leaderboard-view').classList.add('active');
+        renderLeaderboard();
+    }
 }
 
 function showLeagueDetail(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById('league-detail-view').classList.add('active');
+    document.getElementById('main-tabs').style.display = 'none';
     ui.currentLeagueName = name;
     ui.currentLeagueDetail = null;
     ui.currentRank = undefined;
@@ -95,6 +120,8 @@ function openLeagueDetail(name) {
     fetchLeagueDetailLive(name);
 }
 
+/* ── API helpers ── */
+
 async function apiFetch(path) {
     const url = `${API_BASE}${path}`;
     const isValid = d => d && typeof d === 'object' && d.status === 'ok';
@@ -122,6 +149,8 @@ async function loadHistory() {
     if (histRes.ok) historyData = await histRes.json();
 }
 
+/* ── Snapshot delta helpers ── */
+
 function hasRosterData(entry) {
     return entry.leagues.length === 0 || entry.leagues[0].roster !== undefined;
 }
@@ -146,8 +175,48 @@ function findLeagueInSnapshot(snap, leagueId, leagueName) {
     return snap.leagues.find(l => l.ID === leagueId || l.Name.toLowerCase() === leagueName.toLowerCase());
 }
 
+function findPlayerInSnapshot(snap, userId) {
+    for (const league of snap.leagues) {
+        const p = (league.roster || []).find(r => r.UserID === userId);
+        if (p) return p;
+    }
+    return null;
+}
+
 function formatAsOf(snap) {
     return snap ? `as of ${new Date(snap.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+}
+
+function computeDelta(currentPoints, pastPoints) {
+    if (pastPoints === undefined) return { text: '—', color: '' };
+    const delta = currentPoints - pastPoints;
+    const sign = delta >= 0 ? '+' : '−';
+    return {
+        text: `${sign}${fmt(Math.abs(delta))}`,
+        color: delta > 0 ? 'var(--success)' : (delta < 0 ? 'var(--danger)' : ''),
+    };
+}
+
+function leagueDelta(leagueId, leagueName, currentPoints, windowMs, toleranceMs) {
+    const snap = findSnapshotNear(windowMs, toleranceMs);
+    if (!snap) return { text: '—', color: '' };
+    const past = findLeagueInSnapshot(snap, leagueId, leagueName);
+    return computeDelta(currentPoints, past?.Points);
+}
+
+function playerDelta(detail, userId, currentPoints, windowMs, toleranceMs) {
+    const snap = findSnapshotNear(windowMs, toleranceMs);
+    if (!snap) return { text: '—', color: '' };
+    const league = findLeagueInSnapshot(snap, detail.ID, detail.Name);
+    const past = league?.roster?.find(p => p.UserID === userId)?.Points;
+    return computeDelta(currentPoints, past);
+}
+
+function globalPlayerDelta(userId, currentPoints, windowMs, toleranceMs) {
+    const snap = findSnapshotNear(windowMs, toleranceMs);
+    if (!snap) return { text: '—', color: '' };
+    const past = findPlayerInSnapshot(snap, userId);
+    return computeDelta(currentPoints, past?.Points);
 }
 
 function renderDeltaStat(elId, detail, windowMs, toleranceMs) {
@@ -157,27 +226,14 @@ function renderDeltaStat(elId, detail, windowMs, toleranceMs) {
     if (!snap) { el.textContent = '—'; if (asOfEl) asOfEl.textContent = ''; return null; }
     const entry = findLeagueInSnapshot(snap, detail.ID, detail.Name);
     if (!entry) { el.textContent = '—'; if (asOfEl) asOfEl.textContent = ''; return null; }
-    const delta = detail.Points - entry.Points;
-    const sign = delta >= 0 ? '+' : '−';
-    el.textContent = `${sign}${fmt(Math.abs(delta))}`;
-    el.style.color = delta > 0 ? 'var(--success)' : (delta < 0 ? 'var(--danger)' : '');
+    const d = computeDelta(detail.Points, entry.Points);
+    el.textContent = d.text;
+    el.style.color = d.color;
     if (asOfEl) asOfEl.textContent = formatAsOf(snap);
     return snap;
 }
 
-function playerDelta(detail, userId, currentPoints, windowMs, toleranceMs) {
-    const snap = findSnapshotNear(windowMs, toleranceMs);
-    if (!snap) return { text: '—', color: '' };
-    const league = findLeagueInSnapshot(snap, detail.ID, detail.Name);
-    const past = league?.roster?.find(p => p.UserID === userId)?.Points;
-    if (past === undefined) return { text: '—', color: '' };
-    const delta = currentPoints - past;
-    const sign = delta >= 0 ? '+' : '−';
-    return {
-        text: `${sign}${fmt(Math.abs(delta))}`,
-        color: delta > 0 ? 'var(--success)' : (delta < 0 ? 'var(--danger)' : ''),
-    };
-}
+/* ── Leaderboard rendering ── */
 
 function renderLeaderboard() {
     const badge = document.getElementById('event-status-badge');
@@ -196,7 +252,7 @@ function renderLeaderboard() {
 
     const tbody = document.getElementById('leaderboard-tbody');
     if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-muted)">
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">
           ${state.mode === 'search' ? 'No leagues matched your search.' : 'No data yet — waiting for snapshot data.'}
         </td></tr>`;
         return;
@@ -204,15 +260,74 @@ function renderLeaderboard() {
 
     tbody.innerHTML = list.map((l, idx) => {
         const color = colorFor(l.Name);
+        const d10 = leagueDelta(l.ID, l.Name, l.Points, 10 * 60_000, 11 * 60_000);
+        const d30 = leagueDelta(l.ID, l.Name, l.Points, 30 * 60_000, 8  * 60_000);
+        const d1h = leagueDelta(l.ID, l.Name, l.Points, 60 * 60_000, 12 * 60_000);
         return `
       <tr onclick="showLeagueDetail('${esc(l.Name).replace(/'/g, "\\'")}')" style="cursor:pointer">
         <td class="player-rank">${idx + 1}</td>
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> ${esc(l.Name)}</td>
         <td>${l.Members}/${l.MemberCapacity}</td>
         <td class="player-points" style="color:${color}">${fmt(l.Points)}</td>
+        <td style="color:${d10.color}">${d10.text}</td>
+        <td style="color:${d30.color}">${d30.text}</td>
+        <td style="color:${d1h.color}">${d1h.text}</td>
       </tr>`;
     }).join('');
 }
+
+/* ── Player ranking ── */
+
+function getAllPlayers() {
+    const latest = latestSnapshot();
+    if (!latest) return [];
+    const players = [];
+    for (const league of latest.leagues) {
+        for (const p of (league.roster || [])) {
+            players.push({ ...p, LeagueName: league.Name, LeagueID: league.ID });
+        }
+    }
+    players.sort((a, b) => b.Points - a.Points);
+    return players;
+}
+
+function renderPlayerRanking() {
+    const badge = document.getElementById('event-status-badge');
+    const snap = latestSnapshot();
+    badge.innerHTML = snap
+        ? `<span class="status-pill status-active">Updated ${new Date(snap.ts).toLocaleTimeString()}</span>`
+        : '';
+
+    const players = getAllPlayers();
+    document.getElementById('players-heading').textContent = `Top Players (${fmt(players.length)})`;
+
+    const tbody = document.getElementById('players-tbody');
+    if (!players.length) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">
+          No data yet — waiting for snapshot data.
+        </td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = players.map((p, idx) => {
+        const color = colorFor(p.LeagueName);
+        const d10 = globalPlayerDelta(p.UserID, p.Points, 10 * 60_000, 11 * 60_000);
+        const d30 = globalPlayerDelta(p.UserID, p.Points, 30 * 60_000, 8  * 60_000);
+        const d1h = globalPlayerDelta(p.UserID, p.Points, 60 * 60_000, 12 * 60_000);
+        return `
+      <tr onclick="showLeagueDetail('${esc(p.LeagueName).replace(/'/g, "\\'")}')" style="cursor:pointer">
+        <td class="player-rank">${idx + 1}</td>
+        <td class="player-name">${esc(p.DisplayName)}</td>
+        <td><span class="st-team-dot" style="background:${color}"></span> ${esc(p.LeagueName)}</td>
+        <td class="player-points">${fmt(p.Points)}</td>
+        <td style="color:${d10.color}">${d10.text}</td>
+        <td style="color:${d30.color}">${d30.text}</td>
+        <td style="color:${d1h.color}">${d1h.text}</td>
+      </tr>`;
+    }).join('');
+}
+
+/* ── League detail ── */
 
 function renderLeagueDetail() {
     const name = ui.currentLeagueName;
@@ -281,6 +396,8 @@ function renderLeagueDetail() {
         : `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">No roster data.</td></tr>`;
 }
 
+/* ── Username resolution ── */
+
 function isUnresolvedName(entity) {
     return !!(entity && entity.UserID && entity.DisplayName === String(entity.UserID));
 }
@@ -312,6 +429,8 @@ async function resolveUsernames(userIds) {
     }
     return map;
 }
+
+/* ── Live detail fetch ── */
 
 async function buildLiveDetail(raw) {
     const applyCached = entity => {
@@ -401,6 +520,8 @@ async function resolveRank(name, detail) {
     if (ui.currentLeagueName === name) renderLeagueDetail();
 }
 
+/* ── Search ── */
+
 async function searchLeagues() {
     const input = document.getElementById('search-league-name');
     const query = (input?.value || '').trim();
@@ -438,12 +559,15 @@ function clearSearch() {
     if (state.mode === 'search') { state.mode = 'top'; save(); renderLeaderboard(); }
 }
 
+/* ── Refresh ── */
+
 async function refreshAll({ silent = false } = {}) {
     const btn = document.getElementById('refresh-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
     try {
         await loadHistory();
-        if (state.mode === 'top') renderLeaderboard();
+        if (activeTab === 'players') renderPlayerRanking();
+        else renderLeaderboard();
         if (ui.currentLeagueName) {
             const stillTracked = topLeagues().find(l => l.Name.toLowerCase() === ui.currentLeagueName.toLowerCase());
             if (stillTracked) {
@@ -460,6 +584,8 @@ async function refreshAll({ silent = false } = {}) {
     }
 }
 
+/* ── Event listeners ── */
+
 document.getElementById('league-back-btn').addEventListener('click', showLeaderboard);
 document.getElementById('refresh-btn').addEventListener('click', () => refreshAll({ silent: false }));
 document.getElementById('search-league-btn').addEventListener('click', searchLeagues);
@@ -467,6 +593,8 @@ document.getElementById('clear-search-btn').addEventListener('click', clearSearc
 document.getElementById('search-league-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); searchLeagues(); }
 });
+document.getElementById('tab-leagues').addEventListener('click', () => showTab('leagues'));
+document.getElementById('tab-players').addEventListener('click', () => showTab('players'));
 
 setInterval(() => refreshAll({ silent: true }), 5 * 60_000);
 
