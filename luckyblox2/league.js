@@ -18,6 +18,8 @@ const DISPLAY_LIMIT = 1000;
 let ui = { currentLeagueName: null, currentLeagueDetail: null, currentRank: undefined, livePointsAsOf: undefined };
 let overallTotalCache = 0;
 let activeTab = 'leagues';
+let playerSearchMode = false;
+let playerSearchResults = [];
 
 function save() {
     try { localStorage.setItem('ps99_luckyblox2_league_v1', JSON.stringify(state)); } catch (_) {}
@@ -298,13 +300,19 @@ function renderPlayerRanking() {
         ? `<span class="status-pill status-active">Updated ${new Date(snap.ts).toLocaleTimeString()}</span>`
         : '';
 
-    const players = getAllPlayers();
-    document.getElementById('players-heading').textContent = `Top Players (${fmt(players.length)})`;
+    const allPlayers = getAllPlayers();
+    const players = playerSearchMode ? playerSearchResults : allPlayers.slice(0, DISPLAY_LIMIT);
+
+    document.getElementById('players-heading').textContent = playerSearchMode
+        ? `Search Results (${fmt(playerSearchResults.length)} match${playerSearchResults.length === 1 ? '' : 'es'})`
+        : `Top Players (${fmt(Math.min(allPlayers.length, DISPLAY_LIMIT))} of ${fmt(allPlayers.length)})`;
+
+    document.getElementById('clear-player-search-btn').style.display = playerSearchMode ? 'inline-block' : 'none';
 
     const tbody = document.getElementById('players-tbody');
     if (!players.length) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">
-          No data yet — waiting for snapshot data.
+          ${playerSearchMode ? 'No players matched your search.' : 'No data yet — waiting for snapshot data.'}
         </td></tr>`;
         return;
     }
@@ -314,9 +322,10 @@ function renderPlayerRanking() {
         const d10 = globalPlayerDelta(p.UserID, p.Points, 10 * 60_000, 11 * 60_000);
         const d30 = globalPlayerDelta(p.UserID, p.Points, 30 * 60_000, 8  * 60_000);
         const d1h = globalPlayerDelta(p.UserID, p.Points, 60 * 60_000, 12 * 60_000);
+        const rank = playerSearchMode ? p._rank : idx + 1;
         return `
       <tr onclick="showLeagueDetail('${esc(p.LeagueName).replace(/'/g, "\\'")}')" style="cursor:pointer">
-        <td class="player-rank">${idx + 1}</td>
+        <td class="player-rank">${rank}</td>
         <td class="player-name">${esc(p.DisplayName)}</td>
         <td><span class="st-team-dot" style="background:${color}"></span> ${esc(p.LeagueName)}</td>
         <td class="player-points">${fmt(p.Points)}</td>
@@ -559,6 +568,38 @@ function clearSearch() {
     if (state.mode === 'search') { state.mode = 'top'; save(); renderLeaderboard(); }
 }
 
+/* ── Player search ── */
+
+function searchPlayers() {
+    const input = document.getElementById('search-player-name');
+    const query = (input?.value || '').trim().toLowerCase();
+    if (!query) { toast('Enter a player name', 'error'); return; }
+
+    const allPlayers = getAllPlayers();
+    const matches = allPlayers
+        .map((p, idx) => ({ ...p, _rank: idx + 1 }))
+        .filter(p => p.DisplayName.toLowerCase().includes(query));
+
+    playerSearchMode = true;
+    playerSearchResults = matches;
+
+    const statusEl = document.getElementById('player-search-status');
+    statusEl.className = `import-status ${matches.length ? 'success' : 'error'}`;
+    statusEl.textContent = matches.length
+        ? `Found ${matches.length} player(s) matching "${query}".`
+        : `No players found matching "${query}".`;
+
+    renderPlayerRanking();
+}
+
+function clearPlayerSearch() {
+    document.getElementById('search-player-name').value = '';
+    document.getElementById('player-search-status').innerHTML = '';
+    playerSearchMode = false;
+    playerSearchResults = [];
+    renderPlayerRanking();
+}
+
 /* ── Refresh ── */
 
 async function refreshAll({ silent = false } = {}) {
@@ -592,6 +633,11 @@ document.getElementById('search-league-btn').addEventListener('click', searchLea
 document.getElementById('clear-search-btn').addEventListener('click', clearSearch);
 document.getElementById('search-league-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); searchLeagues(); }
+});
+document.getElementById('search-player-btn').addEventListener('click', searchPlayers);
+document.getElementById('clear-player-search-btn').addEventListener('click', clearPlayerSearch);
+document.getElementById('search-player-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); searchPlayers(); }
 });
 document.getElementById('tab-leagues').addEventListener('click', () => showTab('leagues'));
 document.getElementById('tab-players').addEventListener('click', () => showTab('players'));
