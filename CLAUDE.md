@@ -47,3 +47,11 @@ When creating a new event tracker page:
 - API: `/api/` clan battle endpoints (same as Lucky Blox)
 - History: `pinata/history.json`, `pinata/resolved_names.json` (95-minute retention)
 - No Discord alerts configured yet
+
+### Cyberpunk Battle (Clan Battle) — `cyberpunk/`
+- Pages: `cyberpunk.html` (tabbed: Clans + Players)
+- Scripts: `cyberpunk.js`
+- Snapshot: `.github/scripts/snapshot-cyberpunk.mjs` via `.github/workflows/snapshot-cyberpunk.yml`
+- API: `/api/` clan battle endpoints (same as Lucky Blox)
+- History: `cyberpunk/history.json`, `cyberpunk/resolved_names.json` (95-minute retention)
+- No Discord alerts configured yet

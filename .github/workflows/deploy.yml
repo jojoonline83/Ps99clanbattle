@@ -40,7 +40,12 @@ jobs:
           for f in $PINATA_FILES; do
             git show ${{ github.sha }}:"$f" > "pinata/$f" 2>/dev/null || echo "Skipping $f (not in source)"
           done
-          KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/scripts/snapshot-pinata.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/snapshot-pinata.yml .github/workflows/deploy.yml"
+          mkdir -p cyberpunk
+          CYBERPUNK_FILES="cyberpunk.html cyberpunk.js style.css"
+          for f in $CYBERPUNK_FILES; do
+            git show ${{ github.sha }}:"$f" > "cyberpunk/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+          done
+          KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/scripts/snapshot-pinata.mjs .github/scripts/snapshot-cyberpunk.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/snapshot-pinata.yml .github/workflows/snapshot-cyberpunk.yml .github/workflows/deploy.yml"
           for f in $KEEP; do
             git checkout ${{ github.sha }} -- "$f" 2>/dev/null || echo "Skipping $f (not in source)"
           done
