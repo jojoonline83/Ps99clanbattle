@@ -39,3 +39,11 @@ When creating a new event tracker page:
 - API: `/v1/leagues` endpoints (not clan battle API)
 - History: `league_history.json`, `resolved_names.json` (95-minute retention)
 - Discord alert: 20-minute zero-gain window for player "jojo8", uses `DISCORD_WEBHOOK` secret
+
+### Pinata Party (Clan Battle) — `pinata/`
+- Pages: `pinata.html` (tabbed: Clans + Players)
+- Scripts: `pinata.js`
+- Snapshot: `.github/scripts/snapshot-pinata.mjs` via `.github/workflows/snapshot-pinata.yml`
+- API: `/api/` clan battle endpoints (same as Lucky Blox)
+- History: `pinata/history.json`, `pinata/resolved_names.json` (95-minute retention)
+- No Discord alerts configured yet

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>PS99 Clan Battle &#8212; Pinata Party</title>
+    <link rel="stylesheet" href="style.css?v=7">
+    <script>
+    (function(){
+        var V = 1;
+        var k = '_ps99cb_pinata_v';
+        var stored = localStorage.getItem(k);
+        localStorage.setItem(k, V);
+        if (stored && stored !== String(V)) {
+            var url = location.href.split('?')[0] + '?nocache=' + V;
+            location.replace(url);
+        }
+    })();
+    </script>
+</head>
+<body>
+
+<header>
+    <div class="header-content">
+        <div class="logo">
+            <span class="logo-icon">&#127882;</span>
+            <h1>PS99 Clan Battle &#8212; Pinata Party</h1>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+            <span id="event-status-badge"></span>
+            <button class="btn-refresh" id="refresh-btn">&#128260; Refresh</button>
+        </div>
+    </div>
+</header>
+
+<nav class="page-nav" id="main-tabs">
+    <a class="nav-tab active" id="tab-clans" href="javascript:void(0)">Clans</a>
+    <a class="nav-tab" id="tab-players" href="javascript:void(0)">Players</a>
+</nav>
+
+<main>
+
+    <!-- Clan Leaderboard View -->
+    <div id="leaderboard-view" class="view active">
+        <div class="event-info-bar">
+            <div>
+                <div class="event-title">Clan Battle Leaderboard</div>
+                <div class="event-dates">Top 500 clans &#8212; refreshed every ~10 minutes</div>
+            </div>
+        </div>
+
+        <div class="manage-card live-card">
+            <div class="manage-card-header">
+                <h3>&#128269; Search Clan</h3>
+                <span class="live-dot"></span>
+            </div>
+            <p class="live-desc">Search any clan by name (live API search, works outside Top 500).</p>
+            <div class="live-manual">
+                <input type="text" id="search-clan-name" class="live-input" placeholder="Enter clan name">
+                <button class="btn-live-secondary" id="search-clan-btn">Search</button>
+                <button class="btn-secondary" id="clear-search-btn" style="display:none">Clear</button>
+            </div>
+            <div id="search-status" class="import-status"></div>
+        </div>
+
+        <h3 class="sub-heading" id="leaderboard-heading">Top Clans</h3>
+        <div class="players-table-container">
+            <table class="players-table">
+                <thead>
+                    <tr><th>#</th><th>Clan</th><th>Members</th><th>Points</th><th>&Delta;10m</th><th>&Delta;30m</th><th>&Delta;1h</th></tr>
+                </thead>
+                <tbody id="leaderboard-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Players View -->
+    <div id="players-view" class="view">
+        <div class="event-info-bar">
+            <div>
+                <div class="event-title">Individual Player Leaderboard</div>
+                <div class="event-dates">Top 1000 players by battle contribution &#8212; refreshed every ~10 minutes</div>
+            </div>
+        </div>
+
+        <div class="manage-card live-card">
+            <div class="manage-card-header">
+                <h3>&#128269; Search Player</h3>
+                <span class="live-dot"></span>
+            </div>
+            <p class="live-desc">Search by player name, user ID, or clan name.</p>
+            <div class="live-manual">
+                <input type="text" id="search-player-name" class="live-input" placeholder="Enter player name">
+                <button class="btn-live-secondary" id="search-player-btn">Search</button>
+                <button class="btn-secondary" id="clear-player-search-btn" style="display:none">Clear</button>
+            </div>
+            <div id="player-search-status" class="import-status"></div>
+        </div>
+
+        <h3 class="sub-heading" id="players-heading">Top Players</h3>
+        <div class="players-table-container">
+            <table class="players-table">
+                <thead>
+                    <tr><th>#</th><th>Player</th><th>Clan</th><th>Points</th><th>&Delta;10m</th><th>&Delta;30m</th><th>&Delta;1h</th></tr>
+                </thead>
+                <tbody id="players-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Clan Detail View -->
+    <div id="clan-detail-view" class="view">
+        <div class="detail-top-bar">
+            <button class="back-btn" id="clan-back-btn">&larr; Back</button>
+        </div>
+        <div class="team-detail-header">
+            <div class="team-detail-title-row">
+                <div class="team-detail-color-bar" id="clan-detail-color-bar"></div>
+                <div>
+                    <h2 id="clan-detail-name"></h2>
+                    <div id="clan-detail-sub" class="team-detail-sub-line"></div>
+                </div>
+            </div>
+            <div class="team-detail-stats">
+                <div class="stat-box"><span class="stat-label">Rank</span><span class="stat-value" id="cd-rank"></span></div>
+                <div class="stat-box"><span class="stat-label">Points</span><span class="stat-value" id="cd-pts"></span><span class="stat-asof" id="cd-pts-asof"></span></div>
+                <div class="stat-box"><span class="stat-label">Roster</span><span class="stat-value" id="cd-roster"></span></div>
+            </div>
+            <div class="team-detail-stats" style="margin-top:16px">
+                <div class="stat-box"><span class="stat-label">Last 10m</span><span class="stat-value" id="cd-delta-10m">&mdash;</span><span class="stat-asof" id="cd-delta-10m-asof"></span></div>
+                <div class="stat-box"><span class="stat-label">Last 30m</span><span class="stat-value" id="cd-delta-30m">&mdash;</span><span class="stat-asof" id="cd-delta-30m-asof"></span></div>
+                <div class="stat-box"><span class="stat-label">Last 1h</span><span class="stat-value" id="cd-delta-1h">&mdash;</span><span class="stat-asof" id="cd-delta-1h-asof"></span></div>
+            </div>
+        </div>
+        <h3 class="sub-heading">Roster</h3>
+        <div class="roster-delta-note" id="roster-delta-note"></div>
+        <div class="players-table-container">
+            <table class="players-table roster-table">
+                <thead>
+                    <tr><th>#</th><th>Display Name</th><th>Points</th><th>&Delta;10m</th><th>&Delta;30m</th><th>&Delta;1h</th></tr>
+                </thead>
+                <tbody id="roster-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Player Detail View -->
+    <div id="player-detail-view" class="view">
+        <div class="detail-top-bar">
+            <button class="back-btn" id="player-back-btn">&larr; Back</button>
+        </div>
+        <div class="team-detail-header">
+            <div class="team-detail-title-row">
+                <div class="team-detail-color-bar" id="player-detail-color-bar"></div>
+                <div>
+                    <h2 id="player-detail-name"></h2>
+                    <div id="player-detail-sub" class="team-detail-sub-line"></div>
+                </div>
+            </div>
+            <div class="team-detail-stats">
+                <div class="stat-box"><span class="stat-label">Global Rank</span><span class="stat-value" id="pd-rank"></span></div>
+                <div class="stat-box"><span class="stat-label">Clan Rank</span><span class="stat-value" id="pd-clan-rank"></span></div>
+                <div class="stat-box"><span class="stat-label">Points</span><span class="stat-value" id="pd-pts"></span></div>
+                <div class="stat-box"><span class="stat-label">Clan</span><span class="stat-value" id="pd-clan"></span></div>
+            </div>
+            <div class="team-detail-stats" style="margin-top:16px">
+                <div class="stat-box"><span class="stat-label">Last 10m</span><span class="stat-value" id="pd-delta-10m">&mdash;</span></div>
+                <div class="stat-box"><span class="stat-label">Last 30m</span><span class="stat-value" id="pd-delta-30m">&mdash;</span></div>
+                <div class="stat-box"><span class="stat-label">Last 1h</span><span class="stat-value" id="pd-delta-1h">&mdash;</span></div>
+            </div>
+        </div>
+        <h3 class="sub-heading">Point History</h3>
+        <div class="players-table-container">
+            <table class="players-table">
+                <thead>
+                    <tr><th>Time</th><th>Points</th><th>Change</th></tr>
+                </thead>
+                <tbody id="history-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script src="pinata.js?v=1"></script>
+</body>
+</html>
