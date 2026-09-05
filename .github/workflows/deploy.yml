@@ -1,0 +1,50 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, claude/ps99-pinata-leaderboards-f0qjb5]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-gh-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Push to gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages || true
+          git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
+          mkdir -p luckyblox
+          FILES="index.html players.html stages.html style.css app.js players.js stages.js"
+          for f in $FILES; do
+            git show ${{ github.sha }}:"$f" > "luckyblox/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+          done
+          mkdir -p luckyblox2
+          LEAGUE_FILES="league.html league.js style.css"
+          for f in $LEAGUE_FILES; do
+            git show ${{ github.sha }}:"$f" > "luckyblox2/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+          done
+          mkdir -p pinata
+          PINATA_FILES="pinata.html pinata.js style.css"
+          for f in $PINATA_FILES; do
+            git show ${{ github.sha }}:"$f" > "pinata/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+          done
+          KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/scripts/snapshot-pinata.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/snapshot-pinata.yml .github/workflows/deploy.yml"
+          for f in $KEEP; do
+            git checkout ${{ github.sha }} -- "$f" 2>/dev/null || echo "Skipping $f (not in source)"
+          done
+          git add -A
+          git diff --cached --quiet && echo "No changes to deploy" && exit 0
+          git commit -m "deploy: sync from ${{ github.ref_name }}"
+          git push --force origin gh-pages
