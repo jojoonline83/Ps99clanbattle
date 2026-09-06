@@ -5,9 +5,10 @@ const SUBDIR             = 'cyberpunk';
 const HISTORY_FILE       = `${SUBDIR}/history.json`;
 const RESOLVED_CACHE_FILE = `${SUBDIR}/resolved_names.json`;
 const RETENTION_MS       = 95 * 60 * 1000;
-const TOP_PAGES          = 10;
+const TOP_PAGES          = 20;
 const PAGE_SIZE          = 50;
 const DETAIL_CONCURRENCY = 50;
+const MAX_ROSTER_PER_CLAN = 50;
 
 async function fetchJson(url, attempts = 2) {
     for (let i = 0; i < attempts; i++) {
@@ -103,11 +104,13 @@ function buildClanFromDetail(detail, summary) {
     }
 
     roster.sort((a, b) => b.Points - a.Points);
+    const totalMembers = roster.length;
+    if (roster.length > MAX_ROSTER_PER_CLAN) roster.length = MAX_ROSTER_PER_CLAN;
 
     return {
         Name: detail.Name || detail.name || summary.Name,
         Points: summary.Points,
-        Members: roster.length,
+        Members: totalMembers,
         roster,
     };
 }
@@ -154,7 +157,7 @@ async function resolveUsernames(userIds, deadlineMs = 240_000) {
         return false;
     }
 
-    await mapWithConcurrency(batches, 5, resolveBatch);
+    await mapWithConcurrency(batches, 10, resolveBatch);
     if (skipped) console.log(`resolveUsernames: ${skipped} batch(es) skipped (deadline).`);
 
     let unresolvable = 0;
@@ -182,9 +185,9 @@ for (const json of pageResults) {
             Points: asNumber(firstDefined(raw.Points, raw.points, raw.Score, raw.score, raw.Total, raw.total)),
             Members: asNumber(firstDefined(raw.Members, raw.members, raw.MemberCount, raw.memberCount)),
         });
-        if (summaries.length >= 500) break;
+        if (summaries.length >= 1000) break;
     }
-    if (summaries.length >= 500) break;
+    if (summaries.length >= 1000) break;
 }
 
 if (!summaries.length) {
@@ -228,15 +231,18 @@ if (existsSync(RESOLVED_CACHE_FILE)) {
     try { resolvedCache = JSON.parse(readFileSync(RESOLVED_CACHE_FILE, 'utf8')); } catch (_) { resolvedCache = {}; }
 }
 
-const needsResolve = new Set();
+const needsResolveMap = new Map();
 clans.forEach(c => c.roster.forEach(p => {
     if (!isUnresolvedName(p)) return;
     if (resolvedCache[p.UserID]) { p.DisplayName = resolvedCache[p.UserID]; return; }
-    needsResolve.add(p.UserID);
+    const existing = needsResolveMap.get(p.UserID) || 0;
+    if (p.Points > existing) needsResolveMap.set(p.UserID, p.Points);
 }));
+const needsResolve = needsResolveMap;
 
 if (needsResolve.size) {
-    const resolved = await resolveUsernames([...needsResolve]);
+    const sortedIds = [...needsResolve.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+    const resolved = await resolveUsernames(sortedIds);
     clans.forEach(c => c.roster.forEach(p => {
         if (isUnresolvedName(p) && resolved[p.UserID]) p.DisplayName = resolved[p.UserID];
     }));
