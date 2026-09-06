@@ -112,7 +112,7 @@ function buildClanFromDetail(detail, summary) {
     };
 }
 
-async function resolveUsernames(userIds, deadlineMs = 240_000) {
+async function resolveUsernames(userIds, deadlineMs = 15_000) {
     const map = {};
     const sent = new Set();
     const ROBLOX_URL = 'https://users.roblox.com/v1/users';
@@ -195,7 +195,7 @@ if (!summaries.length) {
 const withPoints = summaries.filter(s => s.Points > 0);
 console.log(`Fetched ${summaries.length} clan summaries (${withPoints.length} with points). Fetching detail…`);
 
-const DETAIL_DEADLINE = Date.now() + 120_000;
+const DETAIL_DEADLINE = Date.now() + 30_000;
 let detailDone = 0;
 let detailFailed = 0;
 
