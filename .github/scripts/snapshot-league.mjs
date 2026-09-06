@@ -4,13 +4,9 @@ const API_V1             = 'https://ps99.biggamesapi.io/v1';
 const SUBDIR             = 'luckyblox2';
 const LEAGUE_HISTORY_FILE = `${SUBDIR}/league_history.json`;
 const RESOLVED_CACHE_FILE = `${SUBDIR}/resolved_names.json`;
-const ALERT_STATE_FILE    = `${SUBDIR}/alert_state.json`;
 const RETENTION_MS       = 95 * 60 * 1000;
 const PAGE_SIZE          = 100;
 const LIST_CONCURRENCY   = 10;
-
-const WATCH_PLAYER = 'jojo8';
-const ALERT_WINDOW_MS = 20 * 60_000;
 
 async function fetchJson(url, attempts = 3) {
     for (let i = 0; i < attempts; i++) {
@@ -195,102 +191,3 @@ writeFileSync(RESOLVED_CACHE_FILE, JSON.stringify(resolvedCache));
 
 const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
 console.log(`League snapshot: ${leagueDetails.length} leagues, ${leagueHistory.length} snapshots retained in ${elapsedSec}s.`);
-
-async function checkAndAlert() {
-    const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
-    if (!DISCORD_WEBHOOK) {
-        console.log('No DISCORD_WEBHOOK set — skipping alert check.');
-        return;
-    }
-    if (leagueHistory.length < 2) {
-        console.log('Not enough snapshots for delta — skipping alert.');
-        return;
-    }
-
-    function findPlayer(snap) {
-        for (const league of snap.leagues) {
-            for (const p of (league.roster || [])) {
-                const name = (resolvedCache[p.UserID] || p.DisplayName || '').toLowerCase();
-                if (name === WATCH_PLAYER) return { ...p, DisplayName: resolvedCache[p.UserID] || p.DisplayName, league: league.Name };
-            }
-        }
-        return null;
-    }
-
-    const latest = leagueHistory[leagueHistory.length - 1];
-    let prev = null;
-    for (const snap of leagueHistory) {
-        if (snap === latest) continue;
-        if (latest.ts - snap.ts >= ALERT_WINDOW_MS) {
-            if (!prev || snap.ts > prev.ts) prev = snap;
-        }
-    }
-    if (!prev) {
-        console.log('No snapshot ≥20 minutes old yet — skipping alert.');
-        return;
-    }
-
-    const cur = findPlayer(latest);
-    const old = findPlayer(prev);
-
-    if (!cur) {
-        console.log(`Player "${WATCH_PLAYER}" not found in latest snapshot.`);
-        return;
-    }
-
-    const delta = cur.Points - (old ? old.Points : 0);
-    const minsApart = Math.round((latest.ts - prev.ts) / 60000);
-    console.log(`Alert check: ${WATCH_PLAYER} = ${cur.Points} pts, delta = ${delta} over ~${minsApart}m`);
-
-    let alertState = {};
-    if (existsSync(ALERT_STATE_FILE)) {
-        try { alertState = JSON.parse(readFileSync(ALERT_STATE_FILE, 'utf8')); } catch (_) { alertState = {}; }
-    }
-
-    if (delta > 0) {
-        if (alertState.sent) {
-            console.log('Points increasing again — clearing alert state.');
-            alertState = {};
-            writeFileSync(ALERT_STATE_FILE, JSON.stringify(alertState));
-        }
-        return;
-    }
-
-    if (alertState.sent) {
-        console.log('Alert already sent — not repeating until points increase.');
-        return;
-    }
-
-    const embed = {
-        title: '⚠️ Inactivity Alert — Lucky Block Part 2',
-        color: 0xff4444,
-        fields: [
-            { name: 'Player', value: cur.DisplayName, inline: true },
-            { name: 'League', value: cur.league, inline: true },
-            { name: 'Points', value: cur.Points.toLocaleString(), inline: true },
-            { name: 'No gain for', value: `~${minsApart} minutes`, inline: true },
-        ],
-        timestamp: new Date().toISOString(),
-    };
-
-    try {
-        const res = await fetch(DISCORD_WEBHOOK, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: '<@967089828837597264>', embeds: [embed] }),
-            signal: AbortSignal.timeout(10000),
-        });
-        if (res.ok) {
-            console.log('Discord alert sent.');
-            alertState.sent = true;
-            alertState.ts = Date.now();
-            writeFileSync(ALERT_STATE_FILE, JSON.stringify(alertState));
-        } else {
-            console.error(`Discord webhook returned ${res.status}`);
-        }
-    } catch (e) {
-        console.error('Discord alert failed:', e.message);
-    }
-}
-
-await checkAndAlert();
