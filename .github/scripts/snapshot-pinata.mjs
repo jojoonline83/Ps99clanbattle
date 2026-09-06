@@ -126,7 +126,7 @@ async function resolveUsernames(userIds, deadlineMs = 45_000) {
     let skipped = 0;
     async function resolveBatch(batch) {
         if (Date.now() > deadline) { skipped++; return false; }
-        for (let attempt = 1; attempt <= 2; attempt++) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
             if (Date.now() > deadline) { skipped++; return false; }
             try {
                 const res = await fetch(ROBLOX_URL, {
@@ -143,9 +143,9 @@ async function resolveUsernames(userIds, deadlineMs = 45_000) {
                     return true;
                 } else if (res.status === 429) {
                     const retryAfter = Number(res.headers.get('retry-after')) || 0;
-                    await new Promise(r => setTimeout(r, Math.max(retryAfter * 1000, 800 * attempt)));
+                    await new Promise(r => setTimeout(r, Math.max(retryAfter * 1000, 2000 * attempt)));
                 } else {
-                    await new Promise(r => setTimeout(r, 300 * attempt));
+                    await new Promise(r => setTimeout(r, 500 * attempt));
                 }
             } catch (_) {
                 await new Promise(r => setTimeout(r, 500 * attempt));
@@ -154,7 +154,7 @@ async function resolveUsernames(userIds, deadlineMs = 45_000) {
         return false;
     }
 
-    await mapWithConcurrency(batches, 5, resolveBatch);
+    await mapWithConcurrency(batches, 2, resolveBatch);
     if (skipped) console.log(`resolveUsernames: ${skipped} batch(es) skipped (deadline).`);
 
     let unresolvable = 0;
