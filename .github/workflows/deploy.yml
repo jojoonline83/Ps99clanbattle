@@ -52,4 +52,15 @@ jobs:
           git add -A
           git diff --cached --quiet && echo "No changes to deploy" && exit 0
           git commit -m "deploy: sync from ${{ github.ref_name }}"
-          git push --force origin gh-pages
+          for i in 1 2 3 4 5; do
+            git push --force origin gh-pages && exit 0
+            echo "Push failed (attempt $i) — refetching gh-pages and replaying"
+            sleep 5
+            git fetch origin gh-pages
+            git reset --soft origin/gh-pages
+            git add -A
+            git diff --cached --quiet && echo "No changes to deploy" && exit 0
+            git commit -m "deploy: sync from ${{ github.ref_name }}"
+          done
+          echo "::error::Failed to push after 5 attempts"
+          exit 1
