@@ -115,7 +115,7 @@ function buildClanFromDetail(detail, summary) {
     };
 }
 
-async function resolveUsernames(userIds, deadlineMs = 15_000) {
+async function resolveUsernames(userIds, deadlineMs = 60_000) {
     const map = {};
     const sent = new Set();
     const ROBLOX_URL = 'https://users.roblox.com/v1/users';
