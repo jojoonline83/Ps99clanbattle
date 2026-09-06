@@ -7,10 +7,10 @@ const RESOLVED_CACHE_FILE = `${SUBDIR}/resolved_names.json`;
 const RETENTION_MS       = 95 * 60 * 1000;
 const TOP_PAGES          = 20;
 const PAGE_SIZE          = 50;
-const DETAIL_CONCURRENCY = 50;
+const DETAIL_CONCURRENCY = 15;
 const MAX_ROSTER_PER_CLAN = 50;
 
-async function fetchJson(url, attempts = 2) {
+async function fetchJson(url, attempts = 3) {
     for (let i = 0; i < attempts; i++) {
         try {
             const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -198,7 +198,7 @@ if (!summaries.length) {
 const withPoints = summaries.filter(s => s.Points > 0);
 console.log(`Fetched ${summaries.length} clan summaries (${withPoints.length} with points). Fetching detail…`);
 
-const DETAIL_DEADLINE = Date.now() + 30_000;
+const DETAIL_DEADLINE = Date.now() + 45_000;
 let detailDone = 0;
 let detailFailed = 0;
 
@@ -220,6 +220,24 @@ const detailedClans = await mapWithConcurrency(withPoints, DETAIL_CONCURRENCY, a
     return buildClanFromDetail(detail, summary);
 });
 if (detailFailed) console.log(`  ${detailFailed} clan detail(s) skipped or failed.`);
+
+const emptyIdxs = detailedClans.map((c, i) => (!c.roster || !c.roster.length) && withPoints[i].Points > 0 ? i : -1).filter(i => i >= 0);
+if (emptyIdxs.length) {
+    console.log(`Retrying ${emptyIdxs.length} clans with empty roster at lower concurrency...`);
+    await new Promise(r => setTimeout(r, 1000));
+    const retryResults = await mapWithConcurrency(emptyIdxs, 5, async idx => {
+        const summary = withPoints[idx];
+        const detailJson = await fetchJson(`${API_BASE}/clan/${encodeURIComponent(summary.Name)}`);
+        const detail = detailJson?.data;
+        if (!detail) return null;
+        return { idx, result: buildClanFromDetail(detail, summary) };
+    });
+    let fixed = 0;
+    for (const r of retryResults) {
+        if (r && r.result.roster.length > 0) { detailedClans[r.idx] = r.result; fixed++; }
+    }
+    console.log(`  Retry fixed ${fixed}/${emptyIdxs.length} rosters.`);
+}
 
 const zeroClans = summaries.filter(s => s.Points <= 0).map(s => ({
     Name: s.Name, Points: 0, Members: s.Members, roster: [],
