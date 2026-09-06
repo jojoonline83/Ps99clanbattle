@@ -9,7 +9,7 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 5
     steps:
       - name: Checkout gh-pages
         uses: actions/checkout@v4
@@ -20,8 +20,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          node .github/scripts/snapshot-cyberpunk.mjs
+          cp cyberpunk/history.json /tmp/history.json
+          cp cyberpunk/resolved_names.json /tmp/resolved_names.json
           for i in 1 2 3 4 5; do
-            node .github/scripts/snapshot-cyberpunk.mjs
+            cp /tmp/history.json cyberpunk/history.json
+            cp /tmp/resolved_names.json cyberpunk/resolved_names.json
             git add -f cyberpunk/history.json cyberpunk/resolved_names.json
             git diff --cached --quiet && exit 0
             git commit -m "chore: snapshot cyberpunk data"
