@@ -339,7 +339,7 @@ async function resolveUsernames(userIds) {
     return map;
 }
 
-async function buildLiveDetail(raw) {
+function buildLiveDetail(raw) {
     const members = Array.isArray(raw.Members) ? raw.Members : [];
     const battles = raw.Battles || raw.battles || {};
     const battleKeys = Object.keys(battles);
@@ -388,16 +388,6 @@ async function buildLiveDetail(raw) {
             else if (resolvedNamesCache[uidStr]) displayName = resolvedNamesCache[uidStr];
             roster.push({ UserID: uid, DisplayName: displayName, Points: pts });
         }
-    }
-
-    const needsResolve = roster.filter(p => p.DisplayName === String(p.UserID)).map(p => p.UserID);
-    if (needsResolve.length) {
-        const resolved = await resolveUsernames([...new Set(needsResolve)]);
-        roster.forEach(p => {
-            if (p.DisplayName === String(p.UserID) && (resolved[p.UserID] || resolved[String(p.UserID)])) {
-                p.DisplayName = resolved[p.UserID] || resolved[String(p.UserID)];
-            }
-        });
     }
 
     roster.sort((a, b) => b.Points - a.Points);
@@ -608,7 +598,7 @@ function renderClanDetail() {
 async function fetchClanDetailLive(name) {
     try {
         const res = await apiFetch(`${API_BASE}/clan/${encodeURIComponent(name)}`);
-        const detail = await buildLiveDetail(res.data);
+        const detail = buildLiveDetail(res.data);
         detail.Name = name;
         ui.currentClanDetail = detail;
         if (ui.currentClanName === name) {
@@ -617,6 +607,7 @@ async function fetchClanDetailLive(name) {
             ui.currentRank = idx !== -1 ? idx + 1 : null;
             renderClanDetail();
         }
+        resolveRosterNames(detail.roster, name);
     } catch (err) {
         toast(err.message, 'error');
         document.getElementById('clan-detail-sub').textContent = 'Failed to load clan detail.';
@@ -627,12 +618,13 @@ async function refreshClanDetailLive(name) {
     try {
         const res = await apiFetch(`${API_BASE}/clan/${encodeURIComponent(name)}`);
         if (ui.currentClanName !== name) return;
-        const detail = await buildLiveDetail(res.data);
+        const detail = buildLiveDetail(res.data);
         if (ui.currentClanName !== name) return;
         detail.Name = name;
         ui.currentClanDetail = detail;
         ui.livePointsAsOf = Date.now();
         renderClanDetail();
+        resolveRosterNames(detail.roster, name);
     } catch (_) {}
 }
 
@@ -775,12 +767,13 @@ async function searchClans() {
         const res = await apiFetch(`${API_BASE}/clan/${encodeURIComponent(query)}`);
         const clan = res.data;
         if (!clan) throw new Error('Clan not found');
-        const detail = await buildLiveDetail(clan);
+        const detail = buildLiveDetail(clan);
         state.clanSearchResults = [detail];
         state.clanMode = 'search';
         save();
         renderClanLeaderboard();
         setStatus(`✅ Found clan "${esc(detail.Name)}".`, 'success');
+        resolveRosterNames(detail.roster, detail.Name);
     } catch (err) {
         try {
             const queryLower = query.toLowerCase();
