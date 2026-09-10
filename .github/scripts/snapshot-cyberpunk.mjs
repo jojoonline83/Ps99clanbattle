@@ -276,9 +276,13 @@ if (existsSync(HISTORY_FILE)) {
 }
 
 const now = Date.now();
-history.push({ ts: now, clans });
+const leanClans = clans.map(c => ({ Name: c.Name, Points: c.Points, Members: c.Members }));
+history.push({ ts: now, clans: leanClans });
 history = history.filter(entry => now - entry.ts <= RETENTION_MS);
+for (const entry of history) {
+    entry.clans = entry.clans.map(c => ({ Name: c.Name, Points: c.Points, Members: c.Members }));
+}
 
 writeFileSync(HISTORY_FILE, JSON.stringify(history));
 const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
-console.log(`Snapshot recorded: ${clans.length} clans with roster detail in ${elapsedSec}s, ${history.length} snapshots retained.`);
+console.log(`Snapshot recorded: ${clans.length} clans (lean, no rosters) in ${elapsedSec}s, ${history.length} snapshots retained.`);
