@@ -55,3 +55,11 @@ When creating a new event tracker page:
 - API: `/api/` clan battle endpoints (same as Lucky Blox)
 - History: `cyberpunk/history.json`, `cyberpunk/resolved_names.json` (95-minute retention)
 - No Discord alerts configured yet
+
+### Cyberpunk League (League) — `cyberpunkleague/`
+- Pages: `cyberpunkleague.html`
+- Scripts: `cyberpunkleague.js`
+- Snapshot: `.github/scripts/snapshot-cyberpunkleague.mjs` via `.github/workflows/snapshot-taphero.yml`
+- API: `/v1/leagues` endpoints (same as Lucky Block Part 2)
+- History: `cyberpunkleague/league_history.json`, `cyberpunkleague/resolved_names.json` (95-minute retention)
+- No Discord alerts configured yet
