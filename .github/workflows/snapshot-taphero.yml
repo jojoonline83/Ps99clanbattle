@@ -24,8 +24,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             node .github/scripts/snapshot-league.mjs
+            node .github/scripts/snapshot-cyberpunkleague.mjs
             git add -f luckyblox2/league_history.json luckyblox2/resolved_names.json
             git add -f luckyblox2/alert_state.json 2>/dev/null || true
+            git add -f cyberpunkleague/league_history.json cyberpunkleague/resolved_names.json
             git diff --cached --quiet && exit 0
             git commit -m "chore: snapshot league data"
             git push && exit 0
