@@ -116,6 +116,7 @@ function openLeagueDetail(name) {
             renderLeagueDetail();
             resolveRank(name, fromSnapshot);
         }
+        resolveDetailNames(fromSnapshot, name);
         refreshLeagueDetailLive(name);
         return;
     }
@@ -149,6 +150,15 @@ async function loadHistory() {
         try { resolvedNamesCache = await namesRes.json(); } catch (_) {}
     }
     if (histRes.ok) historyData = await histRes.json();
+    for (const entry of historyData) {
+        for (const league of (entry.leagues || [])) {
+            for (const p of (league.roster || [])) {
+                if (isUnresolvedName(p) && resolvedNamesCache[p.UserID]) {
+                    p.DisplayName = resolvedNamesCache[p.UserID];
+                }
+            }
+        }
+    }
 }
 
 /* ── Snapshot delta helpers ── */
