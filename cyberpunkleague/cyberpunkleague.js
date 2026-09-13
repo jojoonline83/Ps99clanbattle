@@ -436,21 +436,12 @@ async function resolveUsernames(userIds) {
 
 /* ── Live detail fetch ── */
 
-async function buildLiveDetail(raw) {
+function buildDetailFromRaw(raw) {
     const applyCached = entity => {
         if (isUnresolvedName(entity) && resolvedNamesCache[entity.UserID]) entity.DisplayName = resolvedNamesCache[entity.UserID];
     };
     if (raw.Owner) applyCached(raw.Owner);
     (raw.Members || []).forEach(applyCached);
-
-    const needsResolve = [];
-    if (raw.Owner && isUnresolvedName(raw.Owner)) needsResolve.push(raw.Owner.UserID);
-    (raw.Members || []).forEach(m => { if (isUnresolvedName(m)) needsResolve.push(m.UserID); });
-    if (needsResolve.length) {
-        const resolved = await resolveUsernames([...new Set(needsResolve)]);
-        if (raw.Owner && isUnresolvedName(raw.Owner) && resolved[raw.Owner.UserID]) raw.Owner.DisplayName = resolved[raw.Owner.UserID];
-        (raw.Members || []).forEach(m => { if (isUnresolvedName(m) && resolved[m.UserID]) m.DisplayName = resolved[m.UserID]; });
-    }
 
     const contribByUser = {};
     (raw.PointContributions || []).forEach(c => { contribByUser[c.UserID] = c.Points; });
@@ -466,13 +457,27 @@ async function buildLiveDetail(raw) {
     return { ID: raw.ID, Name: raw.Name, Points: raw.Points, MemberCapacity: raw.MemberCapacity, Level: raw.Level, roster };
 }
 
+async function resolveDetailNames(detail, name) {
+    const needsResolve = detail.roster.filter(p => isUnresolvedName(p)).map(p => p.UserID);
+    if (!needsResolve.length) return;
+    try {
+        const resolved = await resolveUsernames([...new Set(needsResolve)]);
+        let changed = false;
+        detail.roster.forEach(p => {
+            if (isUnresolvedName(p) && resolved[p.UserID]) { p.DisplayName = resolved[p.UserID]; changed = true; }
+        });
+        if (changed && ui.currentLeagueName === name) renderLeagueDetail();
+    } catch (_) {}
+}
+
 async function fetchLeagueDetailLive(name) {
     try {
         const res = await apiFetch(`/leagues/${encodeURIComponent(name)}`);
-        const detail = await buildLiveDetail(res.data);
+        const detail = buildDetailFromRaw(res.data);
         ui.currentLeagueDetail = detail;
         if (ui.currentLeagueName === name) { ui.livePointsAsOf = Date.now(); renderLeagueDetail(); }
         resolveRank(name, detail);
+        resolveDetailNames(detail, name);
     } catch (err) {
         toast(err.message, 'error');
         document.getElementById('league-detail-sub').textContent = 'Failed to load league detail.';
@@ -483,11 +488,12 @@ async function refreshLeagueDetailLive(name) {
     try {
         const res = await apiFetch(`/leagues/${encodeURIComponent(name)}`);
         if (ui.currentLeagueName !== name) return;
-        const detail = await buildLiveDetail(res.data);
+        const detail = buildDetailFromRaw(res.data);
         if (ui.currentLeagueName !== name) return;
         ui.currentLeagueDetail = detail;
         ui.livePointsAsOf = Date.now();
         renderLeagueDetail();
+        resolveDetailNames(detail, name);
     } catch (_) {}
 }
 
