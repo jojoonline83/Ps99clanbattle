@@ -14,16 +14,17 @@ When creating a new event tracker page:
 
 1. **Create page files** in the repo root: `<page>.html`, `<page>.js`, `style.css`
 2. **Create snapshot script** at `.github/scripts/snapshot-<name>.mjs` — fetches data from PS99 API, writes history JSON to the event's subdirectory
-3. **Create workflow** at `.github/workflows/snapshot-taphero.yml` with `workflow_dispatch` only (NO cron schedule) — checks out `gh-pages`, runs the snapshot script, commits and pushes
+3. **Add snapshot to an existing workflow** (e.g. add `node .github/scripts/snapshot-<name>.mjs` and `git add` lines to `snapshot-taphero.yml` for league events, or create a new `snapshot-<name>.yml` for clan battle events) — `workflow_dispatch` only, NO cron schedule
 4. **Update `deploy.yml`** to sync new page files to the event's subdirectory on gh-pages, and add the snapshot script + workflow to the KEEP list
-5. **Push workflow + snapshot script to the default branch** so GitHub recognizes it for `workflow_dispatch`
-6. **Add relay step** in the `ps99taphero` repo's `snapshot-taphero.yml` workflow to dispatch the Ps99clanbattle workflow using `github.token` (no PAT needed)
+5. **Push workflow + snapshot script to the default branch** (`claude/ps99-clan-battle-tracker-5N9NW`) via `mcp__github__push_files` so GitHub recognizes it for `workflow_dispatch`
+6. **Add relay step** in the `ps99taphero` repo's `snapshot-taphero.yml` workflow to dispatch the Ps99clanbattle workflow using `github.token` (no PAT needed) — this is REQUIRED for data to flow, as the Google Apps Script only triggers the ps99taphero repo directly
 
 ## Scheduler
 
 - The external scheduler is a **Google Apps Script** ("Ps99taphero" project) that triggers `snapshot-taphero.yml` on the `ps99taphero` repo every 10 minutes via `workflow_dispatch`
 - The ps99taphero workflow relays the dispatch to Ps99clanbattle — do NOT add cron to workflows, do NOT modify the Google Apps Script
 - The relay step uses `github.token` and `gh workflow run`
+- **IMPORTANT**: Every new event that needs data snapshots MUST have a corresponding relay step in the ps99taphero workflow, OR be added to an existing Ps99clanbattle workflow that already has a relay. Without the relay, no data will flow.
 
 ## Current Events
 
