@@ -115,10 +115,6 @@ function getClanPoints(clan) {
     return getLivePoints(clan.Name) ?? clan.Points;
 }
 
-function hasRosterData(entry) {
-    return entry.clans.length === 0 || entry.clans[0].roster !== undefined;
-}
-
 function findSnapshotNear(msAgo, toleranceMs) {
     if (historyData.length < 2) return null;
     const latest = historyData[historyData.length - 1];
@@ -127,7 +123,6 @@ function findSnapshotNear(msAgo, toleranceMs) {
     let best = null, bestDiff = Infinity;
     for (const entry of historyData) {
         if (entry === latest) continue;
-        if (!hasRosterData(entry)) continue;
         if (latest.ts - entry.ts < minAgeMs) continue;
         const diff = Math.abs(entry.ts - targetTs);
         if (diff < bestDiff) { bestDiff = diff; best = entry; }
@@ -469,7 +464,7 @@ function renderClanLeaderboard() {
         const d30 = clanDelta(c.Name, 30 * 60_000, 8  * 60_000);
         const d1h = clanDelta(c.Name, 60 * 60_000, 12 * 60_000);
         return `
-      <tr onclick="showClanDetail('${esc(c.Name).replace(/'/g, "\\'")}")" style="cursor:pointer">
+      <tr onclick="showClanDetail('${esc(c.Name).replace(/'/g, "\\'")}')" style="cursor:pointer">
         <td class="player-rank">${idx + 1}</td>
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> ${esc(c.Name)}</td>
         <td>${members}</td>
@@ -890,7 +885,7 @@ async function resolveUnresolvedPlayers() {
 
 async function loadHistory() {
     const [histRes, namesRes] = await Promise.all([
-        fetch(`history.json?t=${Date.now()}`, { signal: AbortSignal.timeout(30000) }),
+        fetch(`history.json?t=${Date.now()}`, { signal: AbortSignal.timeout(60000) }),
         fetch(`resolved_names.json?t=${Date.now()}`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
     ]);
     if (namesRes && namesRes.ok) {
