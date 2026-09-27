@@ -14,6 +14,8 @@ When creating a new event tracker page:
 
 1. **Create page files** in the repo root: `<page>.html`, `<page>.js`, `style.css`
 2. **Create snapshot script** at `.github/scripts/snapshot-<name>.mjs` — fetches data from PS99 API, writes history JSON to the event's subdirectory
+   - League events: no new script needed — reuse `node .github/scripts/snapshot-league-event.mjs <subdir>`
+   - League events: copy `spacemining.html` + `spacemining.js`; only the HTML needs edits (title, `data-event-key`, `data-event-name`, script src) — the JS reads its label/storage key from `<body data-event-*>`
 3. **Add snapshot to an existing workflow** (e.g. add `node .github/scripts/snapshot-<name>.mjs` and `git add` lines to `snapshot-taphero.yml` for league events, or create a new `snapshot-<name>.yml` for clan battle events) — `workflow_dispatch` only, NO cron schedule
 4. **Update `deploy.yml`** to sync new page files to the event's subdirectory on gh-pages, and add the snapshot script + workflow to the KEEP list
 5. **Push workflow + snapshot script to the default branch** (`claude/ps99-clan-battle-tracker-5N9NW`) via `mcp__github__push_files` so GitHub recognizes it for `workflow_dispatch`
@@ -63,4 +65,13 @@ When creating a new event tracker page:
 - Snapshot: `.github/scripts/snapshot-cyberpunkleague.mjs` via `.github/workflows/snapshot-taphero.yml`
 - API: `/v1/leagues` endpoints (same as Lucky Block Part 2)
 - History: `cyberpunkleague/league_history.json`, `cyberpunkleague/resolved_names.json` (95-minute retention)
+- No Discord alerts configured yet
+- Snapshot no longer runs (event ended; replaced by Space Mining in `snapshot-taphero.yml`)
+
+### Space Mining (League) — `spacemining/`
+- Pages: `spacemining.html` (tabbed: Leagues + Players)
+- Scripts: `spacemining.js`
+- Snapshot: `.github/scripts/snapshot-league-event.mjs spacemining` via `.github/workflows/snapshot-taphero.yml` (already relayed from ps99taphero every 10 min)
+- API: `/v1/leagues` endpoints (same as Lucky Block Part 2)
+- History: `spacemining/league_history.json`, `spacemining/resolved_names.json` (95-minute retention)
 - No Discord alerts configured yet
