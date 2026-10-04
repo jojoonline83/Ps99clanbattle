@@ -7,7 +7,10 @@
 //
 // Writes: <subdir>/history.json   lean clan points per snapshot
 //         <subdir>/players.json   top players per snapshot: { ts, p: [[UserID, Points, clanIdx]], c: [clanNames] }
+//         <subdir>/rosters.json   every clan's members: { ts, clans: { Name: [[UserID, Points, d10m, d30m, d1h]] } }
 //         <subdir>/resolved_names.json, <subdir>/event.json
+// Roster point history (for the per-member deltas) lives in $ROSTER_STATE_FILE, which the
+// workflow keeps in the Actions cache so it is not committed to gh-pages.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 
 const API_BASE           = 'https://ps99.biggamesapi.io/api';
@@ -25,6 +28,10 @@ const TOP_PAGES          = 20;
 const PAGE_SIZE          = 50;
 const DETAIL_CONCURRENCY = 15;
 const TOP_PLAYERS        = 1000;
+const ROSTERS_FILE       = `${SUBDIR}/rosters.json`;
+const ROSTER_STATE_FILE  = process.env.ROSTER_STATE_FILE || `roster-state/${SUBDIR}.json`;
+// Same windows as the pages: [window, tolerance]
+const DELTA_WINDOWS      = [[10 * 60_000, 11 * 60_000], [30 * 60_000, 8 * 60_000], [60 * 60_000, 12 * 60_000]];
 
 async function fetchJson(url, attempts = 3) {
     for (let i = 0; i < attempts; i++) {
@@ -313,12 +320,22 @@ if (existsSync(RESOLVED_CACHE_FILE)) {
     try { resolvedCache = JSON.parse(readFileSync(RESOLVED_CACHE_FILE, 'utf8')); } catch (_) { resolvedCache = {}; }
 }
 
-// Only the top players need names server-side; clan rosters resolve in the browser.
+// Top players first, then the remaining clan members (highest points first) while time allows;
+// the cache carries over, so every member gets a name within a few runs.
 const needsResolve = topPlayers.filter(p => !resolvedCache[p.UserID]).map(p => p.UserID);
 if (needsResolve.length) {
     const resolved = await resolveUsernames(needsResolve);
     Object.assign(resolvedCache, resolved);
-    console.log(`Resolved ${Object.keys(resolved).length}/${needsResolve.length} new display names (${Object.keys(resolvedCache).length} cached total).`);
+    console.log(`Resolved ${Object.keys(resolved).length}/${needsResolve.length} new top-player names (${Object.keys(resolvedCache).length} cached total).`);
+}
+const needsResolveRest = [...playerMap.values()]
+    .filter(p => !resolvedCache[p.UserID])
+    .sort((a, b) => b.Points - a.Points)
+    .map(p => p.UserID);
+if (needsResolveRest.length) {
+    const resolved = await resolveUsernames(needsResolveRest, 40_000);
+    Object.assign(resolvedCache, resolved);
+    console.log(`Resolved ${Object.keys(resolved).length}/${needsResolveRest.length} other member names (${Object.keys(resolvedCache).length} cached total).`);
 }
 writeFileSync(RESOLVED_CACHE_FILE, JSON.stringify(resolvedCache));
 
@@ -342,6 +359,39 @@ const clanIdx = new Map(clanNames.map((n, i) => [n, i]));
 playerHistory.push({ ts: now, c: clanNames, p: topPlayers.map(p => [p.UserID, p.Points, clanIdx.get(p.Clan)]) });
 playerHistory = playerHistory.filter(entry => now - entry.ts <= RETENTION_MS);
 writeFileSync(PLAYERS_FILE, JSON.stringify(playerHistory));
+
+// Full clan rosters with per-member deltas from the cached roster point history.
+let rosterHistory = [];
+if (existsSync(ROSTER_STATE_FILE)) {
+    try { rosterHistory = JSON.parse(readFileSync(ROSTER_STATE_FILE, 'utf8')); } catch (_) { rosterHistory = []; }
+}
+rosterHistory = rosterHistory.filter(entry => now - entry.ts <= RETENTION_MS);
+const pastSnaps = DELTA_WINDOWS.map(([windowMs, toleranceMs]) => {
+    let best = null, bestDiff = Infinity;
+    for (const entry of rosterHistory) {
+        if (now - entry.ts < windowMs / 2) continue;
+        const diff = Math.abs(entry.ts - (now - windowMs));
+        if (diff < bestDiff) { bestDiff = diff; best = entry; }
+    }
+    return best && bestDiff <= toleranceMs ? best.m : null;
+});
+const currentPoints = {};
+const rosters = {};
+let rosterMembers = 0;
+for (const c of clans) {
+    if (!c.roster.length) continue;
+    rosters[c.Name] = c.roster.map(p => {
+        currentPoints[p.UserID] = p.Points;
+        const deltas = pastSnaps.map(m => (m && m[p.UserID] !== undefined ? p.Points - m[p.UserID] : null));
+        return [p.UserID, p.Points, ...deltas];
+    });
+    rosterMembers += c.roster.length;
+}
+writeFileSync(ROSTERS_FILE, JSON.stringify({ ts: now, clans: rosters }));
+rosterHistory.push({ ts: now, m: currentPoints });
+mkdirSync(ROSTER_STATE_FILE.replace(/\/[^/]*$/, ''), { recursive: true });
+writeFileSync(ROSTER_STATE_FILE, JSON.stringify(rosterHistory));
+console.log(`Rosters: ${Object.keys(rosters).length} clans, ${rosterMembers} members; roster history ${rosterHistory.length} snapshots (deltas available: ${pastSnaps.map(m => (m ? 'yes' : 'no')).join('/')}).`);
 
 const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
 console.log(`Snapshot recorded for "${eventInfo.title}": ${clans.length} clans, ${topPlayers.length} players (of ${playerMap.size}) in ${elapsedSec}s, ${history.length} snapshots retained.`);

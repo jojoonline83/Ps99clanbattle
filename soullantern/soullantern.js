@@ -44,8 +44,46 @@ function snapPlayerMap(snap) {
     return snap._byId;
 }
 
-// Clan members that are in the latest top-players snapshot (until the live API answers).
+// rosters.json: { ts, clans: { Name: [[UserID, Points, d10m, d30m, d1h]] } } — every clan's members.
+// Loaded only when a clan is opened (it is the biggest data file).
+let rostersData = null;
+let rostersPromise = null;
+let rosterDeltaById = new Map();
+
+function loadRosters() {
+    if (!rostersPromise) {
+        rostersPromise = fetch(`rosters.json?t=${Date.now()}`, { signal: AbortSignal.timeout(30000) })
+            .then(res => (res.ok ? res.json() : null))
+            .then(data => {
+                if (!data?.clans) return null;
+                rostersData = data;
+                rosterDeltaById = new Map();
+                for (const rows of Object.values(data.clans)) {
+                    for (const [uid, , d10, d30, d1h] of rows) rosterDeltaById.set(uid, [d10, d30, d1h]);
+                }
+                return data;
+            })
+            .catch(() => { rostersPromise = null; return null; });
+    }
+    return rostersPromise;
+}
+
+function rosterFromFile(clanName) {
+    if (!rostersData) return null;
+    const lower = clanName.toLowerCase();
+    const key = Object.keys(rostersData.clans).find(k => k.toLowerCase() === lower);
+    if (!key) return null;
+    return rostersData.clans[key].map(([uid, pts]) => ({
+        UserID: uid,
+        DisplayName: resolvedNamesCache[uid] || resolvedNamesCache[String(uid)] || String(uid),
+        Points: pts,
+    }));
+}
+
+// Full roster from rosters.json, else the clan's members in the top-players snapshot.
 function snapshotRoster(clanName) {
+    const fromFile = rosterFromFile(clanName);
+    if (fromFile) return fromFile;
     const latest = playerSnaps[playerSnaps.length - 1];
     if (!latest) return [];
     const lower = clanName.toLowerCase();
@@ -163,10 +201,17 @@ function openClanDetail(name) {
         const idx = topClans().indexOf(fromSnapshot);
         ui.currentRank = idx !== -1 ? idx + 1 : undefined;
         renderClanDetail();
-        resolveRosterNames(ui.currentClanDetail.roster, name);
+        loadRosters().then(() => {
+            const detail = ui.currentClanDetail;
+            if (ui.currentClanName !== name || !detail || detail.liveRoster) return;
+            ui.currentClanDetail = { ...detail, roster: snapshotRoster(name) };
+            renderClanDetail();
+            resolveRosterNames(ui.currentClanDetail.roster, name);
+        });
         refreshClanDetailLive(name);
         return;
     }
+    loadRosters().then(() => { if (ui.currentClanName === name) renderClanDetail(); });
     fetchClanDetailLive(name);
 }
 
@@ -412,6 +457,16 @@ function renderDeltaStat(elId, detail, windowMs, toleranceMs) {
 }
 
 function playerDelta(detail, userId, currentPoints, windowMs, toleranceMs) {
+    const fileDeltas = rosterDeltaById.get(userId);
+    if (fileDeltas) {
+        const d = fileDeltas[windowMs <= 10 * 60_000 ? 0 : windowMs <= 30 * 60_000 ? 1 : 2];
+        if (d === null || d === undefined) return { text: '—', color: '' };
+        return {
+            text: `${d >= 0 ? '+' : '−'}${fmt(Math.abs(d))}`,
+            color: d > 0 ? 'var(--success)' : (d < 0 ? 'var(--danger)' : ''),
+        };
+    }
+
     const snap = findPlayerSnapNear(windowMs, toleranceMs);
     if (!snap) return { text: '—', color: '' };
 
@@ -433,11 +488,15 @@ async function refreshAll({ silent = false } = {}) {
     try {
         await loadHistory();
         if (state.mode === 'top') renderLeaderboard();
+        rostersPromise = null;
         if (ui.currentClanName) {
+            await loadRosters();
             const stillTracked = topClans().find(c => c.Name.toLowerCase() === ui.currentClanName.toLowerCase());
             if (stillTracked) {
-                const prevRoster = ui.currentClanDetail?.roster;
-                ui.currentClanDetail = { ...stillTracked, roster: prevRoster?.length ? prevRoster : snapshotRoster(stillTracked.Name) };
+                const prev = ui.currentClanDetail;
+                ui.currentClanDetail = prev?.liveRoster
+                    ? { ...stillTracked, roster: prev.roster, liveRoster: true }
+                    : { ...stillTracked, roster: snapshotRoster(stillTracked.Name) };
                 const idx = topClans().indexOf(stillTracked);
                 if (idx !== -1) {
                     ui.currentRank = idx + 1;
@@ -658,6 +717,7 @@ async function fetchClanDetailLive(name) {
         const detail = await buildLiveDetail(res.data);
         detail.Name = name;
 
+        detail.liveRoster = true;
         ui.currentClanDetail = detail;
         if (ui.currentClanName === name) {
             ui.livePointsAsOf = Date.now();
@@ -678,6 +738,7 @@ async function refreshClanDetailLive(name) {
         const detail = await buildLiveDetail(res.data);
         if (ui.currentClanName !== name) return;
         detail.Name = name;
+        detail.liveRoster = true;
         ui.currentClanDetail = detail;
         ui.livePointsAsOf = Date.now();
         renderClanDetail();
