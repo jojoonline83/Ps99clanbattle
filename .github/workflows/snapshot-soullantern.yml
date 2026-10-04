@@ -1,0 +1,49 @@
+name: Snapshot Soul Lantern Data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: snapshot-soullantern
+  cancel-in-progress: false
+
+env:
+  EVENT_DIR: soullantern
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Record and push snapshot (retries on conflict)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          node .github/scripts/snapshot-clanbattle.mjs "$EVENT_DIR"
+          [ -f "$EVENT_DIR/history.json" ] || { echo "No data recorded yet."; exit 0; }
+          DATA_FILES="history.json players.json resolved_names.json event.json"
+          mkdir -p /tmp/snap
+          for f in $DATA_FILES; do cp "$EVENT_DIR/$f" "/tmp/snap/$f"; done
+          for i in 1 2 3 4 5; do
+            for f in $DATA_FILES; do
+              cp "/tmp/snap/$f" "$EVENT_DIR/$f"
+              git add -f "$EVENT_DIR/$f"
+            done
+            git diff --cached --quiet && exit 0
+            git commit -m "chore: snapshot $EVENT_DIR data"
+            git push && exit 0
+            echo "Push rejected — retrying from latest gh-pages"
+            git reset --hard HEAD~1
+            git fetch origin gh-pages
+            git reset --hard origin/gh-pages
+          done
+          echo "::error::Failed to push snapshot after 5 attempts"
+          exit 1

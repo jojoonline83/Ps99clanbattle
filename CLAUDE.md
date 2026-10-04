@@ -55,3 +55,18 @@ When creating a new event tracker page:
 - API: `/api/` clan battle endpoints (same as Lucky Blox)
 - History: `cyberpunk/history.json`, `cyberpunk/resolved_names.json` (95-minute retention)
 - No Discord alerts configured yet
+
+### Soul Lantern (Clan Battle) — `soullantern/`
+- Pages: `soullantern.html` (tabbed: Clans + Players — individual leaderboard enabled)
+- Scripts: `soullantern.js` (event title read from `soullantern/event.json`)
+- Snapshot: reusable `.github/scripts/snapshot-clanbattle.mjs soullantern` via `.github/workflows/snapshot-soullantern.yml`
+- Refresh: `snapshot-taphero.yml` (already relayed every 10 min) has a `relay-clan-battles` job that dispatches the workflows listed in `WORKFLOWS` using `github.token` — no change needed in the ps99taphero repo or the Google Apps Script
+- History: `history.json` (lean clans), `players.json` (top 1000 players, compact), `resolved_names.json`, `event.json` (95-minute retention)
+- No Discord alerts configured yet
+
+## Reusable Clan Battle Setup (next event)
+
+`snapshot-clanbattle.mjs <subdir>` auto-detects the active battle and locks `<subdir>` to it (via `event.json`), so a finished event is never overwritten. For a new clan battle:
+1. Copy `soullantern.html`/`soullantern.js` to `<subdir>.html`/`<subdir>.js` (update the script tag, `DEFAULT_EVENT_NAME` and storage keys)
+2. Copy `snapshot-soullantern.yml` and change `EVENT_DIR`
+3. Add the page files + workflow to `deploy.yml`, and the workflow filename to `WORKFLOWS` in `snapshot-taphero.yml`
