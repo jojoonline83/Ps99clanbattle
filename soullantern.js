@@ -1,6 +1,6 @@
 'use strict';
 
-const DEFAULT_EVENT_NAME = 'Soul Lantern';
+const DEFAULT_EVENT_NAME = 'Hatch War';
 let eventName = DEFAULT_EVENT_NAME;
 let eventId = null;
 document.title = `PS99 Clan Battle — ${eventName}`;

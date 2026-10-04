@@ -48,8 +48,12 @@ if (!battleData || Date.now() / 1000 > battleData.FinishTime) {
     process.exit(0);
 }
 const battleId = String(activeBattle.configName || activeBattle._id || battleData.Title || battleData.Name || 'unknown');
+// "HatchWarBattle2026" -> "Hatch War"
 const battleTitle = String(battleData.Title || battleData.Name || battleData.DisplayName || battleId)
-    .replace(/([a-z])([A-Z])/g, '$1 $2');
+    .replace(/([a-z])([A-Z0-9])/g, '$1 $2')
+    .replace(/\s*\bBattle\b\s*/gi, ' ')
+    .replace(/\s*\b20\d\d\b\s*/g, ' ')
+    .trim() || battleId;
 console.log(`Active clan battle: id="${battleId}" title="${battleTitle}" (configData keys: ${Object.keys(battleData).join(', ')})`);
 
 let eventInfo = null;
@@ -63,7 +67,7 @@ if (eventInfo?.id && eventInfo.id !== battleId) {
 mkdirSync(SUBDIR, { recursive: true });
 eventInfo = {
     id: battleId,
-    title: eventInfo?.title || battleTitle,
+    title: battleTitle,
     startTime: battleData.StartTime ?? null,
     finishTime: battleData.FinishTime ?? null,
 };
@@ -268,6 +272,24 @@ if (emptyIdxs.length) {
         if (r && r.result.roster.length > 0) { detailedClans[r.idx] = r.result; fixed++; }
     }
     console.log(`  Retry fixed ${fixed}/${emptyIdxs.length} rosters.`);
+
+    // Second, slower pass for clans the API still rate-limited.
+    const stillEmpty = emptyIdxs.filter(i => !detailedClans[i].roster?.length);
+    if (stillEmpty.length) {
+        console.log(`Second retry for ${stillEmpty.length} clans...`);
+        await new Promise(r => setTimeout(r, 3000));
+        const RETRY_DEADLINE = Date.now() + 90_000;
+        let fixed2 = 0;
+        await mapWithConcurrency(stillEmpty, 2, async idx => {
+            if (Date.now() > RETRY_DEADLINE) return;
+            const summary = withPoints[idx];
+            const detailJson = await fetchJson(`${API_BASE}/clan/${encodeURIComponent(summary.Name)}`, 4);
+            if (!detailJson?.data) return;
+            const result = buildClanFromDetail(detailJson.data, summary);
+            if (result.roster.length) { detailedClans[idx] = result; fixed2++; }
+        });
+        console.log(`  Second retry fixed ${fixed2}/${stillEmpty.length} rosters.`);
+    }
 }
 
 const zeroClans = summaries.filter(s => s.Points <= 0).map(s => ({

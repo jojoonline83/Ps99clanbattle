@@ -56,7 +56,7 @@ When creating a new event tracker page:
 - History: `cyberpunk/history.json`, `cyberpunk/resolved_names.json` (95-minute retention)
 - No Discord alerts configured yet
 
-### Soul Lantern (Clan Battle) — `soullantern/`
+### Hatch War 2026 (Clan Battle) — `soullantern/` (folder named after the original request)
 - Pages: `soullantern.html` (tabbed: Clans + Players — individual leaderboard enabled)
 - Scripts: `soullantern.js` (event title read from `soullantern/event.json`)
 - Snapshot: reusable `.github/scripts/snapshot-clanbattle.mjs soullantern` via `.github/workflows/snapshot-soullantern.yml`
