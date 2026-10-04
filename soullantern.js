@@ -460,7 +460,7 @@ function renderClanLeaderboard() {
         const d30 = clanDelta(c.Name, 30 * 60_000, 8  * 60_000);
         const d1h = clanDelta(c.Name, 60 * 60_000, 12 * 60_000);
         return `
-      <tr onclick="showClanDetail('${esc(c.Name).replace(/'/g, "\\'")}")" style="cursor:pointer">
+      <tr data-clan="${esc(c.Name).replace(/"/g, '&quot;')}" onclick="showClanDetail(this.dataset.clan)" style="cursor:pointer">
         <td class="player-rank">${idx + 1}</td>
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> ${esc(c.Name)}</td>
         <td>${members}</td>
@@ -483,15 +483,23 @@ function showClanDetail(name) {
     openClanDetail(name);
 }
 
+// Until the live API answers, show the clan's members that are in the top-players snapshot.
+function snapshotRoster(clanName) {
+    const lower = clanName.toLowerCase();
+    return allPlayers()
+        .filter(p => p.Clan && p.Clan.toLowerCase() === lower)
+        .map(p => ({ UserID: p.UserID, DisplayName: p.DisplayName, Points: p.Points }));
+}
+
 function openClanDetail(name) {
     const nameLower = name.toLowerCase();
     const fromSnapshot = topClans().find(c => c.Name.toLowerCase() === nameLower);
     if (fromSnapshot) {
-        ui.currentClanDetail = fromSnapshot;
+        ui.currentClanDetail = { ...fromSnapshot, roster: snapshotRoster(fromSnapshot.Name) };
         const idx = topClans().indexOf(fromSnapshot);
         ui.currentRank = idx !== -1 ? idx + 1 : undefined;
         renderClanDetail();
-        resolveRosterNames(fromSnapshot.roster, name);
+        resolveRosterNames(ui.currentClanDetail.roster, name);
         refreshClanDetailLive(name);
         return;
     }
@@ -543,7 +551,7 @@ function renderClanDetail() {
     document.getElementById('clan-detail-sub').textContent = `Clan Battle — ${eventName}`;
     const livePts = getLivePoints(detail.Name);
     document.getElementById('cd-pts').textContent = fmt(livePts ?? detail.Points);
-    const rosterCount = detail.roster ? detail.roster.length : 0;
+    const rosterCount = Math.max(detail.Members || 0, detail.roster ? detail.roster.length : 0);
     document.getElementById('cd-roster').textContent = `${rosterCount}`;
     const asOfTs = ui.livePointsAsOf || livePointsTs;
     document.getElementById('cd-pts-asof').textContent = asOfTs
