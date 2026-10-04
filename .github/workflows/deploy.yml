@@ -46,7 +46,7 @@ jobs:
             git show ${{ github.sha }}:"$f" > "cyberpunk/$f" 2>/dev/null || echo "Skipping $f (not in source)"
           done
           mkdir -p soullantern
-          SOULLANTERN_FILES="soullantern.html soullantern.js style.css"
+          SOULLANTERN_FILES="soullantern.html soullantern.js soullantern-players.html soullantern-players.js soullantern.css"
           for f in $SOULLANTERN_FILES; do
             git show ${{ github.sha }}:"$f" > "soullantern/$f" 2>/dev/null || echo "Skipping $f (not in source)"
           done
