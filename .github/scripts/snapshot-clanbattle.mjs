@@ -28,6 +28,8 @@ const TOP_PAGES          = 20;
 const PAGE_SIZE          = 50;
 const DETAIL_CONCURRENCY = 15;
 const TOP_PLAYERS        = 1000;
+// Time for looking up other members' names each run (runs are ~10 min apart; job timeout is 8 min).
+const NAME_BUDGET_MS     = 240_000;
 const ROSTERS_FILE       = `${SUBDIR}/rosters.json`;
 const ROSTER_STATE_FILE  = process.env.ROSTER_STATE_FILE || `roster-state/${SUBDIR}.json`;
 // Same windows as the pages: [window, tolerance]
@@ -157,56 +159,57 @@ function buildClanFromDetail(detail, summary) {
     };
 }
 
+// Roblox user lookup is heavily rate-limited per IP, so batches go through two endpoints
+// (Roblox and the roproxy mirror) and every 429 is waited out and retried until the deadline.
+const NAME_ENDPOINTS = ['https://users.roblox.com/v1/users', 'https://users.roproxy.com/v1/users'];
+
 async function resolveUsernames(userIds, deadlineMs = 60_000) {
     const map = {};
-    const sent = new Set();
-    const ROBLOX_URL = 'https://users.roblox.com/v1/users';
     const deadline = Date.now() + deadlineMs;
-    const batches = [];
-    for (let i = 0; i < userIds.length; i += 100) {
-        const batch = userIds.slice(i, i + 100);
-        if (batch.length) batches.push(batch);
-    }
+    const queue = [];
+    for (let i = 0; i < userIds.length; i += 100) queue.push(userIds.slice(i, i + 100));
+    const total = queue.length;
+    let done = 0, rateLimited = 0, unresolvable = 0;
 
-    let skipped = 0;
-    async function resolveBatch(batch) {
-        if (Date.now() > deadline) { skipped++; return false; }
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            if (Date.now() > deadline) { skipped++; return false; }
+    async function worker(endpoint) {
+        let failures = 0;
+        while (queue.length && Date.now() < deadline) {
+            const batch = queue.shift();
+            let ok = false, limited = false;
             try {
-                const res = await fetch(ROBLOX_URL, {
+                const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userIds: batch, excludeBannedUsers: false }),
-                    signal: AbortSignal.timeout(8000),
+                    signal: AbortSignal.timeout(10000),
                 });
                 if (res.ok) {
                     const json = await res.json();
-                    const data = json.data || [];
-                    batch.forEach(uid => sent.add(uid));
-                    data.forEach(u => { map[u.id] = u.displayName || u.name; });
-                    return true;
+                    for (const u of (json.data || [])) map[u.id] = u.displayName || u.name;
+                    // IDs Roblox returns nothing for (deleted accounts) are cached as-is so they aren't retried forever.
+                    for (const uid of batch) if (!map[uid]) { map[uid] = String(uid); unresolvable++; }
+                    done++;
+                    failures = 0;
+                    ok = true;
                 } else if (res.status === 429) {
+                    rateLimited++;
+                    limited = true;
                     const retryAfter = Number(res.headers.get('retry-after')) || 0;
-                    await new Promise(r => setTimeout(r, Math.max(retryAfter * 1000, 2000 * attempt)));
-                } else {
-                    await new Promise(r => setTimeout(r, 500 * attempt));
+                    await new Promise(r => setTimeout(r, Math.min(Math.max(retryAfter * 1000, 4000), 30000)));
                 }
-            } catch (_) {
-                await new Promise(r => setTimeout(r, 500 * attempt));
+            } catch (_) {}
+            if (!ok) {
+                queue.unshift(batch);
+                if (limited) continue; // already waited; rate limits are expected, not a failure
+                failures++;
+                if (failures >= 8) return; // endpoint looks down; leave the rest to the other worker
+                await new Promise(r => setTimeout(r, Math.min(500 * failures, 4000)));
             }
         }
-        return false;
     }
 
-    await mapWithConcurrency(batches, 2, resolveBatch);
-    if (skipped) console.log(`resolveUsernames: ${skipped} batch(es) skipped (deadline).`);
-
-    let unresolvable = 0;
-    for (const uid of sent) {
-        if (!map[uid]) { map[uid] = String(uid); unresolvable++; }
-    }
-    if (unresolvable) console.log(`  ${unresolvable} user(s) marked unresolvable (Roblox returned no data).`);
+    await Promise.all(NAME_ENDPOINTS.flatMap(ep => [worker(ep), worker(ep)]));
+    console.log(`resolveUsernames: ${done}/${total} batches done, ${queue.length} left for later runs, ${rateLimited} rate-limit waits, ${unresolvable} IDs without a Roblox account.`);
     return map;
 }
 
@@ -303,6 +306,8 @@ const zeroClans = summaries.filter(s => s.Points <= 0).map(s => ({
     Name: s.Name, Points: 0, Members: s.Members, roster: [],
 }));
 const clans = [...detailedClans, ...zeroClans];
+// Snapshot time = when the data was fetched, so slow name lookups don't skew the 10-minute spacing.
+const now = Date.now();
 
 // Individual leaderboard: best contribution per player across all clans.
 const playerMap = new Map();
@@ -328,18 +333,19 @@ if (needsResolve.length) {
     Object.assign(resolvedCache, resolved);
     console.log(`Resolved ${Object.keys(resolved).length}/${needsResolve.length} new top-player names (${Object.keys(resolvedCache).length} cached total).`);
 }
-const needsResolveRest = [...playerMap.values()]
-    .filter(p => !resolvedCache[p.UserID])
-    .sort((a, b) => b.Points - a.Points)
-    .map(p => p.UserID);
+// Every clan member (including 0-point members), highest points first.
+const restPoints = new Map();
+for (const c of clans) for (const p of c.roster) {
+    if (!resolvedCache[p.UserID] && !(restPoints.get(p.UserID) >= p.Points)) restPoints.set(p.UserID, p.Points);
+}
+const needsResolveRest = [...restPoints.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
 if (needsResolveRest.length) {
-    const resolved = await resolveUsernames(needsResolveRest, 40_000);
+    const resolved = await resolveUsernames(needsResolveRest, NAME_BUDGET_MS);
     Object.assign(resolvedCache, resolved);
     console.log(`Resolved ${Object.keys(resolved).length}/${needsResolveRest.length} other member names (${Object.keys(resolvedCache).length} cached total).`);
 }
 writeFileSync(RESOLVED_CACHE_FILE, JSON.stringify(resolvedCache));
 
-const now = Date.now();
 
 let history = [];
 if (existsSync(HISTORY_FILE)) {
