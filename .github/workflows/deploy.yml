@@ -23,49 +23,55 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Only page/workflow files are copied from the source commit. Each attempt starts
+          # from the latest gh-pages so snapshot data pushed meanwhile is never reverted.
+          sync_files() {
+            mkdir -p luckyblox
+            FILES="index.html players.html stages.html style.css app.js players.js stages.js"
+            for f in $FILES; do
+              git show ${{ github.sha }}:"$f" > "luckyblox/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+            done
+            mkdir -p luckyblox2
+            LEAGUE_FILES="league.html league.js style.css"
+            for f in $LEAGUE_FILES; do
+              git show ${{ github.sha }}:"$f" > "luckyblox2/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+            done
+            mkdir -p pinata
+            PINATA_FILES="pinata.html pinata.js style.css"
+            for f in $PINATA_FILES; do
+              git show ${{ github.sha }}:"$f" > "pinata/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+            done
+            mkdir -p cyberpunk
+            CYBERPUNK_FILES="cyberpunk.html cyberpunk.js style.css"
+            for f in $CYBERPUNK_FILES; do
+              git show ${{ github.sha }}:"$f" > "cyberpunk/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+            done
+            mkdir -p soullantern
+            SOULLANTERN_FILES="soullantern.html soullantern.js soullantern-players.html soullantern-players.js soullantern.css"
+            for f in $SOULLANTERN_FILES; do
+              git show ${{ github.sha }}:"$f" > "soullantern/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+            done
+            KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/scripts/snapshot-pinata.mjs .github/scripts/snapshot-cyberpunk.mjs .github/scripts/snapshot-clanbattle.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/snapshot-pinata.yml .github/workflows/snapshot-cyberpunk.yml .github/workflows/snapshot-soullantern.yml .github/workflows/deploy.yml"
+            for f in $KEEP; do
+              git checkout ${{ github.sha }} -- "$f" 2>/dev/null || echo "Skipping $f (not in source)"
+            done
+          }
           git fetch origin gh-pages || true
-          git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
-          mkdir -p luckyblox
-          FILES="index.html players.html stages.html style.css app.js players.js stages.js"
-          for f in $FILES; do
-            git show ${{ github.sha }}:"$f" > "luckyblox/$f" 2>/dev/null || echo "Skipping $f (not in source)"
-          done
-          mkdir -p luckyblox2
-          LEAGUE_FILES="league.html league.js style.css"
-          for f in $LEAGUE_FILES; do
-            git show ${{ github.sha }}:"$f" > "luckyblox2/$f" 2>/dev/null || echo "Skipping $f (not in source)"
-          done
-          mkdir -p pinata
-          PINATA_FILES="pinata.html pinata.js style.css"
-          for f in $PINATA_FILES; do
-            git show ${{ github.sha }}:"$f" > "pinata/$f" 2>/dev/null || echo "Skipping $f (not in source)"
-          done
-          mkdir -p cyberpunk
-          CYBERPUNK_FILES="cyberpunk.html cyberpunk.js style.css"
-          for f in $CYBERPUNK_FILES; do
-            git show ${{ github.sha }}:"$f" > "cyberpunk/$f" 2>/dev/null || echo "Skipping $f (not in source)"
-          done
-          mkdir -p soullantern
-          SOULLANTERN_FILES="soullantern.html soullantern.js soullantern-players.html soullantern-players.js soullantern.css"
-          for f in $SOULLANTERN_FILES; do
-            git show ${{ github.sha }}:"$f" > "soullantern/$f" 2>/dev/null || echo "Skipping $f (not in source)"
-          done
-          KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/scripts/snapshot-pinata.mjs .github/scripts/snapshot-cyberpunk.mjs .github/scripts/snapshot-clanbattle.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/snapshot-pinata.yml .github/workflows/snapshot-cyberpunk.yml .github/workflows/snapshot-soullantern.yml .github/workflows/deploy.yml"
-          for f in $KEEP; do
-            git checkout ${{ github.sha }} -- "$f" 2>/dev/null || echo "Skipping $f (not in source)"
-          done
-          git add -A
-          git diff --cached --quiet && echo "No changes to deploy" && exit 0
-          git commit -m "deploy: sync from ${{ github.ref_name }}"
+          if git rev-parse --verify -q origin/gh-pages >/dev/null; then
+            git checkout -B gh-pages origin/gh-pages
+          else
+            git checkout --orphan gh-pages
+          fi
           for i in 1 2 3 4 5; do
-            git push --force origin gh-pages && exit 0
-            echo "Push failed (attempt $i) — refetching gh-pages and replaying"
-            sleep 5
-            git fetch origin gh-pages
-            git reset --soft origin/gh-pages
+            sync_files
             git add -A
             git diff --cached --quiet && echo "No changes to deploy" && exit 0
             git commit -m "deploy: sync from ${{ github.ref_name }}"
+            git push origin gh-pages && exit 0
+            echo "Push failed (attempt $i) — refetching gh-pages and replaying"
+            sleep 5
+            git fetch origin gh-pages
+            git reset --hard origin/gh-pages
           done
           echo "::error::Failed to push after 5 attempts"
           exit 1

@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="soullantern.css?v=1">
     <script>
     (function(){
-        var V = 4;
+        var V = 5;
         var k = '_ps99cb_soullantern_v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
@@ -70,7 +70,7 @@
         <div class="players-table-container">
             <table class="players-table">
                 <thead>
-                    <tr><th>#</th><th>Clan</th><th>Members</th><th>Points</th></tr>
+                    <tr><th>#</th><th>Clan</th><th>Members</th><th>Points</th><th>&Delta;10m</th><th>&Delta;30m</th><th>&Delta;1Hr</th></tr>
                 </thead>
                 <tbody id="leaderboard-tbody"></tbody>
             </table>
@@ -117,6 +117,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="soullantern.js?v=4"></script>
+<script src="soullantern.js?v=5"></script>
 </body>
 </html>
