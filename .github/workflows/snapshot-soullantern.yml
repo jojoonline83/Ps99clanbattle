@@ -44,7 +44,12 @@ jobs:
           for f in $DATA_FILES; do cp "$EVENT_DIR/$f" "/tmp/snap/$f"; done
           for i in 1 2 3 4 5; do
             for f in $DATA_FILES; do
-              cp "/tmp/snap/$f" "$EVENT_DIR/$f"
+              # names: merge with whatever is on gh-pages now (e.g. a name backfill), never overwrite
+              if [ "$f" = resolved_names.json ]; then
+                node .github/scripts/merge-names.mjs "/tmp/snap/$f" "$EVENT_DIR/$f" || cp "/tmp/snap/$f" "$EVENT_DIR/$f"
+              else
+                cp "/tmp/snap/$f" "$EVENT_DIR/$f"
+              fi
               git add -f "$EVENT_DIR/$f"
             done
             git diff --cached --quiet && exit 0

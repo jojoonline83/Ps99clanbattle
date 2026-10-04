@@ -63,6 +63,7 @@ When creating a new event tracker page:
 - Refresh: `snapshot-taphero.yml` (already relayed every 10 min) has a `relay-clan-battles` job that dispatches the workflows listed in `WORKFLOWS` using `github.token` — no change needed in the ps99taphero repo or the Google Apps Script
 - History: `history.json` (lean clans), `players.json` (top 1000 players, compact), `rosters.json` (every clan's members with Δ10m/30m/1h, loaded only when a clan is opened), `resolved_names.json`, `event.json` (95-minute retention)
 - Roster point history for the per-member deltas is kept in the Actions cache (`roster-<subdir>-*`), not committed to gh-pages
+- Names: each snapshot spends up to 4 min on Roblox name lookups (`.github/scripts/roblox-names.mjs`, retries 429s across users.roblox.com + roproxy). `names-soullantern.yml` is a catch-up run (`resolve-names.mjs`) that names every member incl. 0-point ones; it runs on push of that file and via workflow_dispatch. Both merge into `resolved_names.json` (`merge-names.mjs`) instead of overwriting
 - No Discord alerts configured yet
 
 ## Reusable Clan Battle Setup (next event)

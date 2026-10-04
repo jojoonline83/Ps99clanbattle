@@ -1,0 +1,62 @@
+name: Backfill Soul Lantern Names
+
+# Catch-up run that names every clan member (including 0-point members) in one go.
+# Runs once when this file is pushed to the default branch, and can be re-run from the Actions tab.
+on:
+  push:
+    branches: [claude/ps99-clan-battle-tracker-5N9NW]
+    paths: [.github/workflows/names-soullantern.yml]
+  workflow_dispatch:
+    inputs:
+      budget_seconds:
+        description: 'Time to spend on name lookups (seconds)'
+        default: '1200'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: names-soullantern
+  cancel-in-progress: false
+
+env:
+  EVENT_DIR: soullantern
+
+jobs:
+  names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Checkout scripts
+        uses: actions/checkout@v4
+        with:
+          path: src
+          sparse-checkout: .github/scripts
+
+      - name: Resolve names and push (merging with names saved meanwhile)
+        env:
+          BUDGET: ${{ github.event.inputs.budget_seconds || '1200' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          node src/.github/scripts/resolve-names.mjs "$EVENT_DIR" "$BUDGET"
+          NAMES="$EVENT_DIR/resolved_names.json"
+          cp "$NAMES" /tmp/names.json
+          for i in 1 2 3 4 5; do
+            node src/.github/scripts/merge-names.mjs /tmp/names.json "$NAMES"
+            git add -f "$NAMES"
+            git diff --cached --quiet && exit 0
+            git commit -m "chore: backfill $EVENT_DIR names"
+            git push && exit 0
+            echo "Push rejected — merging into latest gh-pages"
+            git reset --hard HEAD~1
+            git fetch origin gh-pages
+            git reset --hard origin/gh-pages
+          done
+          echo "::error::Failed to push names after 5 attempts"
+          exit 1
