@@ -23,13 +23,23 @@ jobs:
         with:
           ref: gh-pages
 
+      # Roster point history for the per-member deltas — kept in the Actions cache, not on gh-pages.
+      - name: Restore roster history
+        uses: actions/cache/restore@v4
+        with:
+          path: roster-state
+          key: roster-${{ env.EVENT_DIR }}-${{ github.run_id }}
+          restore-keys: roster-${{ env.EVENT_DIR }}-
+
       - name: Record and push snapshot (retries on conflict)
+        env:
+          ROSTER_STATE_FILE: roster-state/${{ env.EVENT_DIR }}.json
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           node .github/scripts/snapshot-clanbattle.mjs "$EVENT_DIR"
           [ -f "$EVENT_DIR/history.json" ] || { echo "No data recorded yet."; exit 0; }
-          DATA_FILES="history.json players.json resolved_names.json event.json"
+          DATA_FILES="history.json players.json rosters.json resolved_names.json event.json"
           mkdir -p /tmp/snap
           for f in $DATA_FILES; do cp "$EVENT_DIR/$f" "/tmp/snap/$f"; done
           for i in 1 2 3 4 5; do
@@ -47,3 +57,10 @@ jobs:
           done
           echo "::error::Failed to push snapshot after 5 attempts"
           exit 1
+
+      - name: Save roster history
+        if: always() && hashFiles('roster-state/*.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: roster-state
+          key: roster-${{ env.EVENT_DIR }}-${{ github.run_id }}

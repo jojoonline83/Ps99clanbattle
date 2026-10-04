@@ -61,7 +61,8 @@ When creating a new event tracker page:
 - Scripts: `soullantern.js`, `soullantern-players.js`; stylesheet `soullantern.css` (copy of ps99pinata `style.css`); event title read from `soullantern/event.json`
 - Snapshot: reusable `.github/scripts/snapshot-clanbattle.mjs soullantern` via `.github/workflows/snapshot-soullantern.yml`
 - Refresh: `snapshot-taphero.yml` (already relayed every 10 min) has a `relay-clan-battles` job that dispatches the workflows listed in `WORKFLOWS` using `github.token` — no change needed in the ps99taphero repo or the Google Apps Script
-- History: `history.json` (lean clans), `players.json` (top 1000 players, compact), `resolved_names.json`, `event.json` (95-minute retention)
+- History: `history.json` (lean clans), `players.json` (top 1000 players, compact), `rosters.json` (every clan's members with Δ10m/30m/1h, loaded only when a clan is opened), `resolved_names.json`, `event.json` (95-minute retention)
+- Roster point history for the per-member deltas is kept in the Actions cache (`roster-<subdir>-*`), not committed to gh-pages
 - No Discord alerts configured yet
 
 ## Reusable Clan Battle Setup (next event)
