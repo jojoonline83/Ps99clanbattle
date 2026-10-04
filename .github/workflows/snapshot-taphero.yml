@@ -38,3 +38,22 @@ jobs:
           done
           echo "::error::Failed to push snapshot after 5 attempts"
           exit 1
+
+  # Relay the same 10-minute dispatch to the clan battle snapshot workflows.
+  # github.token can dispatch workflows in this repo (workflow_dispatch is exempt
+  # from the GITHUB_TOKEN no-retrigger rule). Add new event workflows to WORKFLOWS.
+  relay-clan-battles:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      WORKFLOWS: snapshot-soullantern.yml
+    steps:
+      - name: Dispatch clan battle snapshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in $WORKFLOWS; do
+            gh workflow run "$wf" --repo "${{ github.repository }}" --ref "${{ github.ref_name }}" \
+              && echo "Dispatched $wf" || echo "::warning::Failed to dispatch $wf"
+          done

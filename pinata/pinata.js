@@ -115,7 +115,9 @@ function getClanPoints(clan) {
     return getLivePoints(clan.Name) ?? clan.Points;
 }
 
-// --- Snapshot delta helpers ---
+function hasRosterData(entry) {
+    return entry.clans.length === 0 || entry.clans[0].roster !== undefined;
+}
 
 function findSnapshotNear(msAgo, toleranceMs) {
     if (historyData.length < 2) return null;
@@ -125,6 +127,7 @@ function findSnapshotNear(msAgo, toleranceMs) {
     let best = null, bestDiff = Infinity;
     for (const entry of historyData) {
         if (entry === latest) continue;
+        if (!hasRosterData(entry)) continue;
         if (latest.ts - entry.ts < minAgeMs) continue;
         const diff = Math.abs(entry.ts - targetTs);
         if (diff < bestDiff) { bestDiff = diff; best = entry; }
@@ -154,8 +157,6 @@ function findClanInSnapshot(snap, clanName) {
 function formatAsOf(snap) {
     return snap ? `as of ${new Date(snap.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
 }
-
-// --- Clan delta ---
 
 function clanDelta(clanName, windowMs, toleranceMs) {
     const snap = findSnapshotNear(windowMs, toleranceMs);
@@ -215,8 +216,6 @@ function rosterPlayerDelta(detail, userId, currentPoints, windowMs, toleranceMs)
     };
 }
 
-// --- Player delta ---
-
 function playerDelta(userId, currentPoints, windowMs, toleranceMs) {
     const snap = findPlayerSnapshotNear(windowMs, toleranceMs);
     if (!snap) return { text: '—', color: '', value: null };
@@ -230,8 +229,6 @@ function playerDelta(userId, currentPoints, windowMs, toleranceMs) {
         value: delta,
     };
 }
-
-// --- Extract players from snapshot ---
 
 function extractPlayers(snapshot) {
     const playerMap = new Map();
@@ -257,8 +254,6 @@ function allPlayers() { return latestPlayerSnapshot()?.players?.list || []; }
 function topPlayers() { return allPlayers().slice(0, DISPLAY_LIMIT); }
 function displayedPlayers() { return state.playerMode === 'search' ? state.playerSearchResults : topPlayers(); }
 
-// --- API fetch ---
-
 async function apiFetch(url) {
     const isValid = d => d && typeof d === 'object' && d.status === 'ok';
     try {
@@ -273,8 +268,6 @@ async function apiFetch(url) {
     }
     throw new Error('API unavailable – check connection or try again later');
 }
-
-// --- Live polling ---
 
 async function fetchLiveClanPoints() {
     const pages = 5;
@@ -297,8 +290,6 @@ async function fetchLiveClanPoints() {
         livePointsTs = Date.now();
     }
 }
-
-// --- Roblox name resolution ---
 
 async function resolveUsernames(userIds) {
     if (!userIds.length) return {};
@@ -347,8 +338,6 @@ async function resolveUsernames(userIds) {
     await Promise.all(Array.from({ length: Math.min(10, remaining.length) }, () => worker()));
     return map;
 }
-
-// --- Build live clan detail ---
 
 function buildLiveDetail(raw) {
     const members = Array.isArray(raw.Members) ? raw.Members : [];
@@ -412,8 +401,6 @@ function buildLiveDetail(raw) {
     };
 }
 
-// --- Toast ---
-
 let toastTimer = null;
 function toast(msg, type = 'success') {
     const el = document.getElementById('toast');
@@ -422,8 +409,6 @@ function toast(msg, type = 'success') {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
-
-// --- Tab switching ---
 
 function switchTab(tab) {
     activeTab = tab;
@@ -438,8 +423,6 @@ function switchTab(tab) {
         renderPlayerLeaderboard();
     }
 }
-
-// --- Clan leaderboard ---
 
 function showClanLeaderboard() {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -486,7 +469,7 @@ function renderClanLeaderboard() {
         const d30 = clanDelta(c.Name, 30 * 60_000, 8  * 60_000);
         const d1h = clanDelta(c.Name, 60 * 60_000, 12 * 60_000);
         return `
-      <tr onclick="showClanDetail('${esc(c.Name).replace(/'/g, "\\'")}')" style="cursor:pointer">
+      <tr onclick="showClanDetail('${esc(c.Name).replace(/'/g, "\\'")}")" style="cursor:pointer">
         <td class="player-rank">${idx + 1}</td>
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> ${esc(c.Name)}</td>
         <td>${members}</td>
@@ -497,8 +480,6 @@ function renderClanLeaderboard() {
       </tr>`;
     }).join('');
 }
-
-// --- Clan detail ---
 
 function showClanDetail(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -647,8 +628,6 @@ async function refreshClanDetailLive(name) {
     } catch (_) {}
 }
 
-// --- Player leaderboard ---
-
 function renderPlayerLeaderboard() {
     const badge = document.getElementById('event-status-badge');
     const snap = latestPlayerSnapshot();
@@ -696,8 +675,6 @@ function renderPlayerLeaderboard() {
       </tr>`;
     }).join('');
 }
-
-// --- Player detail ---
 
 function showPlayerDetail(userId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -771,8 +748,6 @@ function renderPlayerDetailView(userId) {
     }).join('');
 }
 
-// --- Search clans ---
-
 async function searchClans() {
     const input = document.getElementById('search-clan-name');
     const query = (input?.value || '').trim();
@@ -828,8 +803,6 @@ function clearClanSearch() {
         renderClanLeaderboard();
     }
 }
-
-// --- Search players ---
 
 async function searchPlayers() {
     const input = document.getElementById('search-player-name');
@@ -897,8 +870,6 @@ function clearPlayerSearch() {
     }
 }
 
-// --- Resolve unresolved top players ---
-
 async function resolveUnresolvedPlayers() {
     const players = topPlayers();
     const unresolved = players.filter(p => p.DisplayName === String(p.UserID)).map(p => p.UserID);
@@ -917,11 +888,9 @@ async function resolveUnresolvedPlayers() {
     if (activeTab === 'players') renderPlayerLeaderboard();
 }
 
-// --- Load history ---
-
 async function loadHistory() {
     const [histRes, namesRes] = await Promise.all([
-        fetch(`history.json?t=${Date.now()}`, { signal: AbortSignal.timeout(60000) }),
+        fetch(`history.json?t=${Date.now()}`, { signal: AbortSignal.timeout(30000) }),
         fetch(`resolved_names.json?t=${Date.now()}`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
     ]);
     if (namesRes && namesRes.ok) {
@@ -946,8 +915,6 @@ async function loadHistory() {
         }));
     }
 }
-
-// --- Refresh ---
 
 async function refreshAll({ silent = false } = {}) {
     const btn = document.getElementById('refresh-btn');
@@ -974,8 +941,6 @@ async function pollLivePoints() {
         if (ui.currentClanName) refreshClanDetailLive(ui.currentClanName);
     } catch (_) {}
 }
-
-// --- Event listeners ---
 
 document.getElementById('tab-clans').addEventListener('click', () => switchTab('clans'));
 document.getElementById('tab-players').addEventListener('click', () => switchTab('players'));

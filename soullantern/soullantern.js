@@ -1,8 +1,11 @@
 'use strict';
 
-document.title = 'PS99 Clan Battle — Cyberpunk Battle';
+const DEFAULT_EVENT_NAME = 'Soul Lantern';
+let eventName = DEFAULT_EVENT_NAME;
+let eventId = null;
+document.title = `PS99 Clan Battle — ${eventName}`;
 
-const STORAGE_KEY   = 'ps99_clanbattle_cyberpunk_v1';
+const STORAGE_KEY   = 'ps99_clanbattle_soullantern_v1';
 const API_BASE      = 'https://ps99.biggamesapi.io/api';
 const CORS_PROXIES  = [
     'https://corsproxy.io/?url=',
@@ -115,10 +118,6 @@ function getClanPoints(clan) {
     return getLivePoints(clan.Name) ?? clan.Points;
 }
 
-function hasRosterData(entry) {
-    return entry.clans.length === 0 || entry.clans[0].roster !== undefined;
-}
-
 function findSnapshotNear(msAgo, toleranceMs) {
     if (historyData.length < 2) return null;
     const latest = historyData[historyData.length - 1];
@@ -127,7 +126,6 @@ function findSnapshotNear(msAgo, toleranceMs) {
     let best = null, bestDiff = Infinity;
     for (const entry of historyData) {
         if (entry === latest) continue;
-        if (!hasRosterData(entry)) continue;
         if (latest.ts - entry.ts < minAgeMs) continue;
         const diff = Math.abs(entry.ts - targetTs);
         if (diff < bestDiff) { bestDiff = diff; best = entry; }
@@ -203,10 +201,9 @@ function renderClanDeltaStat(elId, detail, windowMs, toleranceMs) {
 }
 
 function rosterPlayerDelta(detail, userId, currentPoints, windowMs, toleranceMs) {
-    const snap = findSnapshotNear(windowMs, toleranceMs);
+    const snap = findPlayerSnapshotNear(windowMs, toleranceMs);
     if (!snap) return { text: '—', color: '' };
-    const clan = findClanInSnapshot(snap, detail.Name);
-    const past = clan?.roster?.find(p => p.UserID === userId)?.Points;
+    const past = snap.players?.byId?.get(userId)?.Points;
     if (past === undefined) return { text: '—', color: '' };
     const delta = currentPoints - past;
     const sign = delta >= 0 ? '+' : '−';
@@ -230,20 +227,14 @@ function playerDelta(userId, currentPoints, windowMs, toleranceMs) {
     };
 }
 
+// players.json entry: { ts, c: [clanNames], p: [[UserID, Points, clanIdx]] }
 function extractPlayers(snapshot) {
     const playerMap = new Map();
-    for (const clan of (snapshot.clans || [])) {
-        for (const p of (clan.roster || [])) {
-            const existing = playerMap.get(p.UserID);
-            if (!existing || p.Points > existing.Points) {
-                playerMap.set(p.UserID, {
-                    UserID: p.UserID,
-                    DisplayName: resolveDisplayName(p),
-                    Points: p.Points,
-                    Clan: clan.Name,
-                });
-            }
-        }
+    const clanNames = snapshot.c || [];
+    for (const [uid, pts, ci] of (snapshot.p || [])) {
+        const p = { UserID: uid, DisplayName: String(uid), Points: pts, Clan: clanNames[ci] || '' };
+        p.DisplayName = resolveDisplayName(p);
+        playerMap.set(uid, p);
     }
     const sorted = [...playerMap.values()].sort((a, b) => b.Points - a.Points);
     return { list: sorted, byId: playerMap };
@@ -343,7 +334,7 @@ function buildLiveDetail(raw) {
     const members = Array.isArray(raw.Members) ? raw.Members : [];
     const battles = raw.Battles || raw.battles || {};
     const battleKeys = Object.keys(battles);
-    let battleData = battleKeys.length ? battles[battleKeys[battleKeys.length - 1]] : null;
+    let battleData = (eventId && battles[eventId]) || (battleKeys.length ? battles[battleKeys[battleKeys.length - 1]] : null);
 
     let contribRows = [];
     if (battleData) {
@@ -549,7 +540,7 @@ function renderClanDetail() {
         return;
     }
 
-    document.getElementById('clan-detail-sub').textContent = 'Clan Battle — Cyberpunk Battle';
+    document.getElementById('clan-detail-sub').textContent = `Clan Battle — ${eventName}`;
     const livePts = getLivePoints(detail.Name);
     document.getElementById('cd-pts').textContent = fmt(livePts ?? detail.Points);
     const rosterCount = detail.roster ? detail.roster.length : 0;
@@ -572,13 +563,10 @@ function renderClanDetail() {
 
     const tbody = document.getElementById('roster-tbody');
     const roster = detail.roster || [];
-    const snapClan = latestSnapshot() ? findClanInSnapshot(latestSnapshot(), detail.Name) : null;
-    const snapRoster = snapClan?.roster || [];
-    const snapPointsById = {};
-    snapRoster.forEach(sp => { snapPointsById[sp.UserID] = sp.Points; });
+    const latestPlayers = latestPlayerSnapshot()?.players?.byId;
     tbody.innerHTML = roster.length
         ? roster.map((p, idx) => {
-            const pts = snapPointsById[p.UserID] !== undefined ? snapPointsById[p.UserID] : p.Points;
+            const pts = latestPlayers?.get(p.UserID)?.Points ?? p.Points;
             const d10 = rosterPlayerDelta(detail, p.UserID, pts, 10 * 60_000, 11 * 60_000);
             const d30 = rosterPlayerDelta(detail, p.UserID, pts, 30 * 60_000, 8  * 60_000);
             const d1h = rosterPlayerDelta(detail, p.UserID, pts, 60 * 60_000, 12 * 60_000);
@@ -783,7 +771,7 @@ async function searchClans() {
                 state.clanMode = 'search';
                 save();
                 renderClanLeaderboard();
-                setStatus(`✅ Found ${matches.length} clan(s) matching "${esc(query)}" in Top 500.`, 'success');
+                setStatus(`✅ Found ${matches.length} clan(s) matching "${esc(query)}" in Top 1000.`, 'success');
             } else {
                 setStatus(`❌ Clan "${esc(query)}" not found.`, 'error');
             }
@@ -888,27 +876,34 @@ async function resolveUnresolvedPlayers() {
     if (activeTab === 'players') renderPlayerLeaderboard();
 }
 
+function applyEventInfo(info) {
+    if (!info || !info.title) return;
+    eventName = info.title;
+    eventId = info.id || null;
+    document.title = `PS99 Clan Battle — ${eventName}`;
+    const el = document.getElementById('event-name');
+    if (el) el.textContent = eventName;
+}
+
 async function loadHistory() {
-    const [histRes, namesRes] = await Promise.all([
-        fetch(`history.json?t=${Date.now()}`, { signal: AbortSignal.timeout(30000) }),
-        fetch(`resolved_names.json?t=${Date.now()}`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
+    const t = Date.now();
+    const [histRes, playersRes, namesRes, eventRes] = await Promise.all([
+        fetch(`history.json?t=${t}`, { signal: AbortSignal.timeout(30000) }),
+        fetch(`players.json?t=${t}`, { signal: AbortSignal.timeout(30000) }).catch(() => null),
+        fetch(`resolved_names.json?t=${t}`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
+        fetch(`event.json?t=${t}`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
     ]);
+    if (eventRes && eventRes.ok) {
+        try { applyEventInfo(await eventRes.json()); } catch (_) {}
+    }
     if (namesRes && namesRes.ok) {
         try { resolvedNamesCache = await namesRes.json(); } catch (_) {}
     }
     if (histRes.ok) {
-        const raw = await histRes.json();
-        historyData = raw;
-        for (const snap of historyData) {
-            for (const clan of (snap.clans || [])) {
-                for (const p of (clan.roster || [])) {
-                    if (p.DisplayName === String(p.UserID)) {
-                        const cached = resolvedNamesCache[p.UserID] || resolvedNamesCache[String(p.UserID)];
-                        if (cached) p.DisplayName = cached;
-                    }
-                }
-            }
-        }
+        historyData = await histRes.json();
+    }
+    if (playersRes && playersRes.ok) {
+        const raw = await playersRes.json();
         playerSnapshots = raw.map(snap => ({
             ts: snap.ts,
             players: extractPlayers(snap),

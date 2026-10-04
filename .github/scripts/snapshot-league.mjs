@@ -191,4 +191,3 @@ writeFileSync(RESOLVED_CACHE_FILE, JSON.stringify(resolvedCache));
 
 const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
 console.log(`League snapshot: ${leagueDetails.length} leagues, ${leagueHistory.length} snapshots retained in ${elapsedSec}s.`);
-

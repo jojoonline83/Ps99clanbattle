@@ -6,12 +6,12 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>PS99 Clan Battle &#8212; Cyberpunk Battle</title>
+    <title>PS99 Clan Battle &#8212; Soul Lantern</title>
     <link rel="stylesheet" href="style.css?v=7">
     <script>
     (function(){
         var V = 1;
-        var k = '_ps99cb_cyberpunk_v';
+        var k = '_ps99cb_soullantern_v';
         var stored = localStorage.getItem(k);
         localStorage.setItem(k, V);
         if (stored && stored !== String(V)) {
@@ -26,8 +26,8 @@
 <header>
     <div class="header-content">
         <div class="logo">
-            <span class="logo-icon">&#129302;</span>
-            <h1>PS99 Clan Battle &#8212; Cyberpunk Battle</h1>
+            <span class="logo-icon">&#127982;</span>
+            <h1>PS99 Clan Battle &#8212; <span id="event-name">Soul Lantern</span></h1>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
             <span id="event-status-badge"></span>
@@ -38,7 +38,7 @@
 
 <nav class="page-nav" id="main-tabs">
     <a class="nav-tab active" id="tab-clans" href="javascript:void(0)">Clans</a>
-    <a class="nav-tab" id="tab-players" href="javascript:void(0)" style="display:none">Players</a>
+    <a class="nav-tab" id="tab-players" href="javascript:void(0)">Players</a>
 </nav>
 
 <main>
@@ -57,7 +57,7 @@
                 <h3>&#128269; Search Clan</h3>
                 <span class="live-dot"></span>
             </div>
-            <p class="live-desc">Search any clan by name (live API search, works outside Top 500).</p>
+            <p class="live-desc">Search any clan by name (live API search, works outside Top 1000).</p>
             <div class="live-manual">
                 <input type="text" id="search-clan-name" class="live-input" placeholder="Enter clan name">
                 <button class="btn-live-secondary" id="search-clan-btn">Search</button>
@@ -187,6 +187,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="cyberpunk.js?v=1"></script>
+<script src="soullantern.js?v=1"></script>
 </body>
 </html>
