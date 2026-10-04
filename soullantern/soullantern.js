@@ -202,7 +202,7 @@ function renderLeaderboard() {
 
     const tbody = document.getElementById('leaderboard-tbody');
     if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-muted)">
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">
           ${state.mode === 'search' ? 'No clans matched your search.' : 'No data yet — hit <strong>🔄 Refresh</strong> to load.'}
         </td></tr>`;
         return;
@@ -211,12 +211,18 @@ function renderLeaderboard() {
     tbody.innerHTML = list.map((c, idx) => {
         const color = colorFor(c.Name);
         const members = c.roster ? c.roster.length : (c.Members || 0);
+        const d10 = clanDelta(c, 10 * 60_000, 11 * 60_000);
+        const d30 = clanDelta(c, 30 * 60_000, 8  * 60_000);
+        const d1h = clanDelta(c, 60 * 60_000, 12 * 60_000);
         return `
       <tr onclick="showClanDetail('${esc(c.Name).replace(/'/g, "\\'")}')" style="cursor:pointer">
         <td class="player-rank">${idx + 1}</td>
         <td class="player-name"><span class="st-team-dot" style="background:${color}"></span> ${esc(c.Name)}</td>
         <td>${members}</td>
         <td class="player-points" style="color:${color}">${fmt(c.Points)}</td>
+        <td style="color:${d10.color}">${d10.text}</td>
+        <td style="color:${d30.color}">${d30.text}</td>
+        <td style="color:${d1h.color}">${d1h.text}</td>
       </tr>`;
     }).join('');
 }
@@ -360,6 +366,19 @@ function findClanInSnapshot(snap, clanName) {
 
 function formatAsOf(snap) {
     return snap ? `as of ${new Date(snap.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+}
+
+// Clan points gained since the snapshot ~windowMs ago (same windows as the clan detail view).
+function clanDelta(clan, windowMs, toleranceMs) {
+    const snap = findSnapshotNear(windowMs, toleranceMs);
+    const past = snap ? findClanInSnapshot(snap, clan.Name) : null;
+    if (!past) return { text: '—', color: '' };
+    const delta = clan.Points - past.Points;
+    const sign  = delta >= 0 ? '+' : '−';
+    return {
+        text: `${sign}${fmt(Math.abs(delta))}`,
+        color: delta > 0 ? 'var(--success)' : (delta < 0 ? 'var(--danger)' : 'var(--text-muted)'),
+    };
 }
 
 function renderDeltaStat(elId, detail, windowMs, toleranceMs) {
