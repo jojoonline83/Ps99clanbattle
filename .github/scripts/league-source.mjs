@@ -1,7 +1,9 @@
 // League data source for snapshot-clanbattle.mjs --league.
 // Returns the same shape the clan battle source produces, so everything downstream
 // (history/players/rosters/names) is shared:
-//   { clans: [{ Name, Points, Members, roster: [{ UserID, DisplayName, Points }] }], meta, nameHints }
+//   { clans: [{ Name, Points, Members, roster: [{ UserID, DisplayName, Points }] }], meta, nameHints,
+//     players: [{ UserID, DisplayName, Points, League }] }   <- individual leaderboard, incl. players
+//                                                              outside the top leagues or in no league
 const API_V1 = 'https://ps99.biggamesapi.io/v1';
 const PAGE_SIZE = 100;
 const MAX_LEAGUES = 1000;
@@ -55,7 +57,40 @@ async function fetchLeagueDetail(summary) {
     return { Name: detail.Name || summary.Name, Points: Number(detail.Points ?? summary.Points) || 0, Members: roster.length, roster };
 }
 
-export async function loadLeagues() {
+// Individual leaderboard (/v1/leagues/players, sorted by points) plus any always-tracked user IDs.
+const PLAYER_PAGES = 15;
+function leagueOf(p) {
+    const v = p.League ?? p.LeagueName ?? p.league ?? null;
+    if (!v) return '';
+    return typeof v === 'object' ? (v.Name || '') : String(v);
+}
+function toPlayer(p) {
+    const uid = Number(p?.UserID ?? p?.userId);
+    if (!(uid > 0)) return null;
+    return { UserID: uid, DisplayName: p.DisplayName || p.displayName || String(uid), Points: Number(p.Points ?? p.points) || 0, League: leagueOf(p) };
+}
+async function loadLeaguePlayers(trackIds) {
+    const pages = await mapWithConcurrency(Array.from({ length: PLAYER_PAGES }, (_, i) => i + 1), 5, async page => {
+        const json = await fetchJson(`${API_V1}/leagues/players?page=${page}&pageSize=${PAGE_SIZE}&sort=Points&sortOrder=desc`);
+        const d = json?.data;
+        const arr = Array.isArray(d) ? d : (d?.players || d?.data || []);
+        return Array.isArray(arr) ? arr : [];
+    });
+    const raw = pages.flat();
+    if (raw.length) console.log(`Individual leaderboard sample: ${JSON.stringify(raw[0]).slice(0, 300)}`);
+    const players = raw.map(toPlayer).filter(Boolean);
+    const tracked = await mapWithConcurrency(trackIds, 3, async uid => {
+        const d = (await fetchJson(`${API_V1}/leagues/players/${uid}`))?.data;
+        const p = toPlayer(Array.isArray(d) ? d[0] : d);
+        console.log(`  tracked player ${uid}: ${p ? `${p.DisplayName}, ${p.Points} pts, league "${p.League || 'none'}"` : 'not returned by the API'}`);
+        return p;
+    });
+    players.push(...tracked.filter(Boolean));
+    console.log(`Individual leaderboard: ${raw.length} entries (${players.filter(p => !p.League).length} without a league) + ${tracked.filter(Boolean).length}/${trackIds.length} tracked players.`);
+    return players;
+}
+
+export async function loadLeagues({ trackIds = [] } = {}) {
     const summaries = [];
     let meta = {};
     for (let page = 1; summaries.length < MAX_LEAGUES; page += 10) {
@@ -94,5 +129,7 @@ export async function loadLeagues() {
         for (const p of d.roster) if (p.DisplayName && p.DisplayName !== String(p.UserID)) nameHints[p.UserID] = p.DisplayName;
         return d;
     });
-    return { clans, meta, nameHints };
+    const players = await loadLeaguePlayers(trackIds);
+    for (const p of players) if (p.DisplayName !== String(p.UserID)) nameHints[p.UserID] = p.DisplayName;
+    return { clans, meta, nameHints, players };
 }
