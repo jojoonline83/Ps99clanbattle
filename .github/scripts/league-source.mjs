@@ -58,7 +58,8 @@ async function fetchLeagueDetail(summary) {
 }
 
 // Individual leaderboard (/v1/leagues/players, sorted by points) plus any always-tracked user IDs.
-const PLAYER_PAGES = 15;
+// The API returns one fixed list of the top 500 players (from sampled leagues) regardless of page/pageSize.
+const PLAYER_PAGES = 1;
 function leagueOf(p) {
     const v = p.League ?? p.LeagueName ?? p.league ?? null;
     if (!v) return '';
