@@ -30,6 +30,10 @@ for (const u of users) {
         `${V1}/players/${u.id}`,
         `${V1}/leaderboard/${u.id}`,
         `${API}/player/${u.id}`,
+        `${V1}/leagues/players/${u.id}?includeSolo=true`,
+        `${V1}/users/${u.id}`,
+        `${V1}/players?userId=${u.id}`,
+        `${API}/leaderboard?userId=${u.id}`,
     ]) show(path.replace('https://ps99.biggamesapi.io', ''), await get(path));
 }
 
@@ -46,6 +50,13 @@ for (const path of [
     `${V1}/events`,
     `${API}/activeLeague`,
     `${API}/activeLeagueBattle`,
+    `${V1}/leagues/players?page=1&pageSize=3&league=none`,
+    `${V1}/players?page=1&pageSize=3&sort=Points&sortOrder=desc`,
+    `${V1}/leaderboard/players`,
+    `${API}/leaderboard`,
+    `${API}/clans?page=1&pageSize=1`,
+    `${V1}`,
+    `${API}`,
 ]) show(path.replace('https://ps99.biggamesapi.io', ''), await get(path));
 
 // How deep does the individual list go, and does any entry lack a league?

@@ -10,7 +10,7 @@ on:
     inputs:
       usernames:
         description: 'Roblox usernames to check (space-separated)'
-        default: 'e_ethan'
+        default: 'e_ethan speedylight'
 
 permissions:
   contents: read
@@ -23,4 +23,4 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/scripts
-      - run: node .github/scripts/probe-league-players.mjs ${{ github.event.inputs.usernames || 'e_ethan' }}
+      - run: node .github/scripts/probe-league-players.mjs ${{ github.event.inputs.usernames || 'e_ethan speedylight' }}
