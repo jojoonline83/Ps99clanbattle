@@ -101,3 +101,34 @@ for (const q of ['sort=recent&sortOrder=desc', 'sort=username&sortOrder=asc']) {
     show(`/v1/players?page=1&pageSize=3&${q}`, await get(`${V1}/players?page=1&pageSize=3&${q}`));
 }
 for (const u of users) show(`/v1/players search ${u.name}`, await get(`${V1}/players?page=1&pageSize=5&sort=username&sortOrder=asc&search=${encodeURIComponent(u.name)}`));
+
+console.log('\n=== hatching points: league detail fields ===');
+{
+    const r = await get(`${V1}/leagues/Top_4`);
+    try {
+        const d = JSON.parse(r.text).data || {};
+        console.log(`league detail keys: ${Object.keys(d).join(', ')}`);
+        for (const k of Object.keys(d)) {
+            const v = d[k];
+            if (Array.isArray(v) && v.length) console.log(`  ${k}[0] = ${JSON.stringify(v[0]).slice(0, 300)}`);
+            else if (v && typeof v === 'object') console.log(`  ${k} = ${JSON.stringify(v).slice(0, 300)}`);
+        }
+    } catch (_) { show('/v1/leagues/Top_4', r); }
+}
+
+console.log('\n=== hatching points: candidate endpoints ===');
+for (const path of [
+    `${V1}/leagues/hatch`, `${V1}/leagues/hatching`, `${V1}/leagues/players/hatch`,
+    `${V1}/leagues/players?page=1&pageSize=3&sort=Hatches&sortOrder=desc`,
+    `${V1}/leagues/players?page=1&pageSize=3&sort=HatchPoints&sortOrder=desc`,
+    `${V1}/leagues/players?page=1&pageSize=3&type=hatch`,
+    `${V1}/hatch`, `${V1}/hatching`, `${V1}/hatching/leaderboard`, `${V1}/hatches`,
+    `${V1}/leaderboards/hatch`, `${V1}/leaderboards/hatching`, `${V1}/leaderboard/hatch`,
+    `${V1}/events/hatch`, `${V1}/event/leaderboard`, `${V1}/events/leaderboard`,
+    `${V1}/players?page=1&pageSize=3&sort=hatches&sortOrder=desc`,
+    `${API}/hatchLeaderboard`, `${API}/leaderboard/hatch`, `${API}/activeEvent`, `${API}/events`,
+    `${API}/activeHatchEvent`, `${API}/eventLeaderboard`,
+]) show(path.replace('https://ps99.biggamesapi.io', ''), await get(path));
+for (const u of users) {
+    show(`/v1/players/${u.name}?include=stats`, await get(`${V1}/players/${encodeURIComponent(u.name)}?include=stats`));
+}
