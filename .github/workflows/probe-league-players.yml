@@ -1,6 +1,6 @@
 name: Probe League Players API
 
-# Diagnostic only: logs which endpoints report points for players outside leagues (v3: dedup + /v1/players).
+# Diagnostic only: logs which endpoints report points for players outside leagues (v4: paging variants).
 # Runs once when this file is pushed to the default branch; re-runnable from the Actions tab.
 on:
   push:

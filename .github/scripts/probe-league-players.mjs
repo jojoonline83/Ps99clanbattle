@@ -81,9 +81,23 @@ const ranked = [...seen.values()].sort((a, b) => b.Points - a.Points);
 console.log(`individual list: ${pagesFetched} pages, ${seen.size} unique players, ${noLeague} without a league, ${outOfOrder} out-of-order entries`);
 for (const n of [1, 100, 500, 1000, 2000, 5000]) if (ranked[n - 1]) console.log(`  rank ${n}: ${ranked[n - 1].Points} pts (${ranked[n - 1].DisplayName}, league ${ranked[n - 1].League?.Name || '-'})`);
 
+console.log('\n=== paging variants for /v1/leagues/players ===');
+const firstIds = async q => {
+    const r = await get(`${V1}/leagues/players?${q}`);
+    try { const d = JSON.parse(r.text).data; const a = Array.isArray(d) ? d : (d?.players || []); return `${r.status} n=${a.length} first=${a[0]?.UserID}:${a[0]?.Points} last=${a.at(-1)?.UserID}:${a.at(-1)?.Points} meta=${JSON.stringify(Object.fromEntries(Object.entries(d || {}).filter(([k]) => k !== 'players')))}`; }
+    catch (_) { return `${r.status} ${r.text.slice(0, 200)}`; }
+};
+for (const q of [
+    'page=1&pageSize=100&sort=Points&sortOrder=desc',
+    'page=2&pageSize=100&sort=Points&sortOrder=desc',
+    'page=6&pageSize=100&sort=Points&sortOrder=desc',
+    'page=1&pageSize=1000&sort=Points&sortOrder=desc',
+    'page=1&pageSize=100&sort=Points&sortOrder=desc&offset=500',
+    'page=1&pageSize=100&sort=Points&sortOrder=asc',
+]) console.log(`  ${q} -> ${await firstIds(q)}`);
+
 console.log('\n=== /v1/players registry ===');
-for (const q of ['sort=recent', 'sort=username']) {
-    const r = await get(`${V1}/players?page=1&pageSize=3&${q}`);
-    show(`/v1/players?page=1&pageSize=3&${q}`, r);
+for (const q of ['sort=recent&sortOrder=desc', 'sort=username&sortOrder=asc']) {
+    show(`/v1/players?page=1&pageSize=3&${q}`, await get(`${V1}/players?page=1&pageSize=3&${q}`));
 }
-for (const u of users) show(`/v1/players?page=1&pageSize=5&sort=username&search=${u.name}`, await get(`${V1}/players?page=1&pageSize=5&sort=username&search=${encodeURIComponent(u.name)}`));
+for (const u of users) show(`/v1/players search ${u.name}`, await get(`${V1}/players?page=1&pageSize=5&sort=username&sortOrder=asc&search=${encodeURIComponent(u.name)}`));
