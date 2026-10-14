@@ -1,5 +1,5 @@
 // Reusable clan battle / league snapshot.
-// Usage: node .github/scripts/snapshot-clanbattle.mjs <subdir> [--league] [--title "Event Name"]
+// Usage: node .github/scripts/snapshot-clanbattle.mjs <subdir> [--league] [--title "Event Name"] [--track id,id]
 //
 // Clan battles: the first run with an active battle "locks" <subdir> to that battle (saved in
 // <subdir>/event.json). Later battles are ignored, so a finished event's data is
@@ -21,10 +21,13 @@ import { loadLeagues } from './league-source.mjs';
 const API_BASE           = 'https://ps99.biggamesapi.io/api';
 const ARGS               = process.argv.slice(2);
 const MODE               = ARGS.includes('--league') ? 'league' : 'clan';
-const TITLE_OVERRIDE     = ARGS.includes('--title') ? ARGS[ARGS.indexOf('--title') + 1] : '';
-const SUBDIR             = ARGS.find((a, i) => !a.startsWith('--') && ARGS[i - 1] !== '--title');
+const argValue           = flag => (ARGS.includes(flag) ? ARGS[ARGS.indexOf(flag) + 1] || '' : '');
+const TITLE_OVERRIDE     = argValue('--title');
+// --track 123,456: user IDs always included in the individual leaderboard (leagues only)
+const TRACK_IDS          = argValue('--track').split(',').map(Number).filter(n => n > 0);
+const SUBDIR             = ARGS.find((a, i) => !a.startsWith('--') && !['--title', '--track'].includes(ARGS[i - 1]));
 if (!SUBDIR || !/^[a-z0-9_-]+$/i.test(SUBDIR)) {
-    console.error('Usage: node snapshot-clanbattle.mjs <subdir> [--league] [--title "Event Name"]');
+    console.error('Usage: node snapshot-clanbattle.mjs <subdir> [--league] [--title "Event Name"] [--track id,id]');
     process.exit(1);
 }
 const HISTORY_FILE       = `${SUBDIR}/history.json`;
@@ -309,8 +312,9 @@ function checkLeagueLock(clans, meta) {
 const startedAt = Date.now();
 let clans;
 let nameHints = {};
+let extraPlayers = [];
 if (MODE === 'league') {
-    const league = await loadLeagues();
+    const league = await loadLeagues({ trackIds: TRACK_IDS });
     if (!league.clans.length) {
         console.log('No league data returned — skipping snapshot.');
         process.exit(0);
@@ -318,6 +322,7 @@ if (MODE === 'league') {
     eventInfo = checkLeagueLock(league.clans, league.meta);
     clans = league.clans;
     nameHints = league.nameHints;
+    extraPlayers = league.players;
 } else {
     eventInfo = await detectClanBattle();
     clans = await loadClanBattleClans();
@@ -336,6 +341,17 @@ for (const c of clans) {
         if (!existing || p.Points > existing.Points) playerMap.set(p.UserID, { UserID: p.UserID, Points: p.Points, Clan: c.Name });
     }
 }
+// Leagues: merge the individual leaderboard so players outside the top leagues (or in no league) are ranked too.
+let extraAdded = 0;
+for (const p of extraPlayers) {
+    if (p.Points <= 0) continue;
+    const existing = playerMap.get(p.UserID);
+    if (!existing) extraAdded++;
+    if (!existing || p.Points > existing.Points) {
+        playerMap.set(p.UserID, { UserID: p.UserID, Points: p.Points, Clan: p.League || existing?.Clan || 'No league' });
+    }
+}
+if (extraPlayers.length) console.log(`Individual leaderboard added ${extraAdded} players not found in the top leagues' rosters.`);
 const topPlayers = [...playerMap.values()].sort((a, b) => b.Points - a.Points).slice(0, TOP_PLAYERS);
 
 let resolvedCache = {};

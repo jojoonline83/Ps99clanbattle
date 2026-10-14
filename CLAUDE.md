@@ -71,6 +71,7 @@ When creating a new event tracker page:
 - Snapshot: `.github/scripts/snapshot-clanbattle.mjs bloodmoon --league --title "Blood Moon"` via `.github/workflows/snapshot-bloodmoon.yml` (relayed through `WORKFLOWS` in `snapshot-taphero.yml`)
 - `--league` reads `/v1/leagues` via `.github/scripts/league-source.mjs` and stores leagues in the same files/shape as clans (history/players/rosters); names come from the API's DisplayName
 - Lock: no "active league" API, so the folder is marked `ended` in `event.json` when the next league's points reset is detected; it is never written after that
+- Individual leaderboard also merges `/v1/leagues/players` (sorted by points) so players outside the top 1000 leagues or in no league (shown as "No league") are ranked; `TRACK_PLAYERS` in the workflow lists user IDs always fetched via `/v1/leagues/players/<id>` (E_Ethan 1574888668)
 - Live clan-API calls are off in `bloodmoon.js` (`LIVE_API = false`); search is over the saved Top 1000
 - The older `spacemining/` league snapshot was stopped on 14 Oct (Space Mining ended; it had no lock and recorded Blood Moon data after the 10 Oct reset)
 

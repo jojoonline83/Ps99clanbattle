@@ -12,6 +12,8 @@ concurrency:
 
 env:
   EVENT_DIR: bloodmoon
+  # Roblox user IDs always included in the individual leaderboard (comma-separated), e.g. E_Ethan
+  TRACK_PLAYERS: '1574888668'
 
 jobs:
   snapshot:
@@ -37,7 +39,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          node .github/scripts/snapshot-clanbattle.mjs "$EVENT_DIR" --league --title "Blood Moon"
+          node .github/scripts/snapshot-clanbattle.mjs "$EVENT_DIR" --league --title "Blood Moon" --track "$TRACK_PLAYERS"
           [ -f "$EVENT_DIR/history.json" ] || { echo "No data recorded yet."; exit 0; }
           DATA_FILES="history.json players.json rosters.json resolved_names.json event.json"
           mkdir -p /tmp/snap
