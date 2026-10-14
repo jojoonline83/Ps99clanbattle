@@ -59,16 +59,31 @@ for (const path of [
     `${API}`,
 ]) show(path.replace('https://ps99.biggamesapi.io', ''), await get(path));
 
-// How deep does the individual list go, and does any entry lack a league?
-let total = 0, noLeague = 0, lastPts = null;
+// How deep does the individual list really go? Count unique players and find where pages start repeating.
+const seen = new Map();
+let pagesFetched = 0, firstRepeat = null, noLeague = 0, outOfOrder = 0, prevPts = Infinity;
 for (let page = 1; page <= 400; page++) {
     const r = await get(`${V1}/leagues/players?page=${page}&pageSize=500&sort=Points&sortOrder=desc`);
     let arr = [];
     try { const d = JSON.parse(r.text).data; arr = Array.isArray(d) ? d : (d?.players || []); } catch (_) {}
     if (!arr.length) { console.log(`\nindividual list ends at page ${page} (status ${r.status})`); break; }
-    total += arr.length;
-    noLeague += arr.filter(p => !p.League && !p.LeagueName).length;
-    lastPts = arr.at(-1).Points;
+    pagesFetched++;
+    let fresh = 0;
+    for (const p of arr) {
+        if (!seen.has(p.UserID)) { seen.set(p.UserID, p); fresh++; if (!p.League) noLeague++; }
+        if (p.Points > prevPts) outOfOrder++;
+        prevPts = p.Points;
+    }
+    if (!fresh && firstRepeat === null) { firstRepeat = page; console.log(`page ${page}: no new players (list repeats from here)`); break; }
     for (const u of users) if (arr.some(p => p.UserID === u.id)) console.log(`  ${u.name} found on page ${page}`);
 }
-console.log(`individual list: ${total} players, ${noLeague} without a league, lowest points ${lastPts}`);
+const ranked = [...seen.values()].sort((a, b) => b.Points - a.Points);
+console.log(`individual list: ${pagesFetched} pages, ${seen.size} unique players, ${noLeague} without a league, ${outOfOrder} out-of-order entries`);
+for (const n of [1, 100, 500, 1000, 2000, 5000]) if (ranked[n - 1]) console.log(`  rank ${n}: ${ranked[n - 1].Points} pts (${ranked[n - 1].DisplayName}, league ${ranked[n - 1].League?.Name || '-'})`);
+
+console.log('\n=== /v1/players registry ===');
+for (const q of ['sort=recent', 'sort=username']) {
+    const r = await get(`${V1}/players?page=1&pageSize=3&${q}`);
+    show(`/v1/players?page=1&pageSize=3&${q}`, r);
+}
+for (const u of users) show(`/v1/players?page=1&pageSize=5&sort=username&search=${u.name}`, await get(`${V1}/players?page=1&pageSize=5&sort=username&search=${encodeURIComponent(u.name)}`));
