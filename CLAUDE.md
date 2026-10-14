@@ -66,9 +66,17 @@ When creating a new event tracker page:
 - Names: each snapshot spends up to 4 min on Roblox name lookups (`.github/scripts/roblox-names.mjs`, retries 429s across users.roblox.com + roproxy). `names-soullantern.yml` is a catch-up run (`resolve-names.mjs`) that names every member incl. 0-point ones; it runs on push of that file and via workflow_dispatch. Both merge into `resolved_names.json` (`merge-names.mjs`) instead of overwriting
 - No Discord alerts configured yet
 
+### Blood Moon (League) — `bloodmoon/`
+- Same template as Hatch War: `bloodmoon.html` (League Leaderboard) + `bloodmoon-players.html` (Individual Players), `bloodmoon.js`, `bloodmoon-players.js`, `bloodmoon.css`
+- Snapshot: `.github/scripts/snapshot-clanbattle.mjs bloodmoon --league --title "Blood Moon"` via `.github/workflows/snapshot-bloodmoon.yml` (relayed through `WORKFLOWS` in `snapshot-taphero.yml`)
+- `--league` reads `/v1/leagues` via `.github/scripts/league-source.mjs` and stores leagues in the same files/shape as clans (history/players/rosters); names come from the API's DisplayName
+- Lock: no "active league" API, so the folder is marked `ended` in `event.json` when the next league's points reset is detected; it is never written after that
+- Live clan-API calls are off in `bloodmoon.js` (`LIVE_API = false`); search is over the saved Top 1000
+- Note: the older `spacemining/` league snapshot has no lock and has been recording Blood Moon data since the 10 Oct reset
+
 ## Reusable Clan Battle Setup (next event)
 
-`snapshot-clanbattle.mjs <subdir>` auto-detects the active battle and locks `<subdir>` to it (via `event.json`), so a finished event is never overwritten. For a new clan battle:
+`snapshot-clanbattle.mjs <subdir>` auto-detects the active battle and locks `<subdir>` to it (via `event.json`), so a finished event is never overwritten. For a new league add `--league --title "Name"` and copy the `bloodmoon*` files instead. For a new clan battle:
 1. Copy `soullantern.html`, `soullantern.js`, `soullantern-players.html`, `soullantern-players.js`, `soullantern.css` to `<subdir>*` names (update nav links, script/css tags, default event name and storage keys)
 2. Copy `snapshot-soullantern.yml` and change `EVENT_DIR`
 3. Add the page files + workflow to `deploy.yml`, and the workflow filename to `WORKFLOWS` in `snapshot-taphero.yml`

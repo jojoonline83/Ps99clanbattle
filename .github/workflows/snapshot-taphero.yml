@@ -47,7 +47,7 @@ jobs:
     permissions:
       actions: write
     env:
-      WORKFLOWS: snapshot-soullantern.yml
+      WORKFLOWS: snapshot-soullantern.yml snapshot-bloodmoon.yml
     steps:
       - name: Dispatch clan battle snapshots
         env:

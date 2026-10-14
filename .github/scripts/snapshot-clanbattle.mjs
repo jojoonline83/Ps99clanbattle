@@ -1,9 +1,12 @@
-// Reusable clan battle snapshot.
-// Usage: node .github/scripts/snapshot-clanbattle.mjs <subdir>
+// Reusable clan battle / league snapshot.
+// Usage: node .github/scripts/snapshot-clanbattle.mjs <subdir> [--league] [--title "Event Name"]
 //
-// The first run with an active battle "locks" <subdir> to that battle (saved in
+// Clan battles: the first run with an active battle "locks" <subdir> to that battle (saved in
 // <subdir>/event.json). Later battles are ignored, so a finished event's data is
 // never overwritten — a new event just needs a new <subdir>.
+// Leagues (--league, /v1/leagues API): there is no "active league" endpoint, so <subdir> is
+// marked ended (and never written again) when the points reset that starts the next league.
+// Leagues are stored in the same shape as clans, so the pages and files are shared.
 //
 // Writes: <subdir>/history.json   lean clan points per snapshot
 //         <subdir>/players.json   top players per snapshot: { ts, p: [[UserID, Points, clanIdx]], c: [clanNames] }
@@ -13,11 +16,15 @@
 // workflow keeps in the Actions cache so it is not committed to gh-pages.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolveUsernames } from './roblox-names.mjs';
+import { loadLeagues } from './league-source.mjs';
 
 const API_BASE           = 'https://ps99.biggamesapi.io/api';
-const SUBDIR             = process.argv[2];
+const ARGS               = process.argv.slice(2);
+const MODE               = ARGS.includes('--league') ? 'league' : 'clan';
+const TITLE_OVERRIDE     = ARGS.includes('--title') ? ARGS[ARGS.indexOf('--title') + 1] : '';
+const SUBDIR             = ARGS.find((a, i) => !a.startsWith('--') && ARGS[i - 1] !== '--title');
 if (!SUBDIR || !/^[a-z0-9_-]+$/i.test(SUBDIR)) {
-    console.error('Usage: node snapshot-clanbattle.mjs <subdir>');
+    console.error('Usage: node snapshot-clanbattle.mjs <subdir> [--league] [--title "Event Name"]');
     process.exit(1);
 }
 const HISTORY_FILE       = `${SUBDIR}/history.json`;
@@ -50,38 +57,44 @@ async function fetchJson(url, attempts = 3) {
     return null;
 }
 
-const battleJson = await fetchJson(`${API_BASE}/activeClanBattle`);
-const activeBattle = battleJson?.data;
-const battleData = activeBattle?.configData;
-if (!battleData || Date.now() / 1000 > battleData.FinishTime) {
-    console.log('No active clan battle — skipping snapshot.');
-    process.exit(0);
-}
-const battleId = String(activeBattle.configName || activeBattle._id || battleData.Title || battleData.Name || 'unknown');
-// "HatchWarBattle2026" -> "Hatch War"
-const battleTitle = String(battleData.Title || battleData.Name || battleData.DisplayName || battleId)
-    .replace(/([a-z])([A-Z0-9])/g, '$1 $2')
-    .replace(/\s*\bBattle\b\s*/gi, ' ')
-    .replace(/\s*\b20\d\d\b\s*/g, ' ')
-    .trim() || battleId;
-console.log(`Active clan battle: id="${battleId}" title="${battleTitle}" (configData keys: ${Object.keys(battleData).join(', ')})`);
-
 let eventInfo = null;
 if (existsSync(EVENT_FILE)) {
     try { eventInfo = JSON.parse(readFileSync(EVENT_FILE, 'utf8')); } catch (_) { eventInfo = null; }
 }
-if (eventInfo?.id && eventInfo.id !== battleId) {
-    console.log(`${SUBDIR}/ is locked to battle "${eventInfo.id}" — active battle "${battleId}" is a different event, skipping.`);
+if (eventInfo?.ended) {
+    console.log(`${SUBDIR}/ is marked ended (${eventInfo.endedReason || 'event over'}) — skipping.`);
     process.exit(0);
 }
-mkdirSync(SUBDIR, { recursive: true });
-eventInfo = {
-    id: battleId,
-    title: battleTitle,
-    startTime: battleData.StartTime ?? null,
-    finishTime: battleData.FinishTime ?? null,
-};
-writeFileSync(EVENT_FILE, JSON.stringify(eventInfo));
+// Clan battle config name; selects the right entry in each clan's Battles.
+let battleId = null;
+
+async function detectClanBattle() {
+    const battleJson = await fetchJson(`${API_BASE}/activeClanBattle`);
+    const activeBattle = battleJson?.data;
+    const battleData = activeBattle?.configData;
+    if (!battleData || Date.now() / 1000 > battleData.FinishTime) {
+        console.log('No active clan battle — skipping snapshot.');
+        process.exit(0);
+    }
+    battleId = String(activeBattle.configName || activeBattle._id || battleData.Title || battleData.Name || 'unknown');
+    // "HatchWarBattle2026" -> "Hatch War"
+    const battleTitle = String(battleData.Title || battleData.Name || battleData.DisplayName || battleId)
+        .replace(/([a-z])([A-Z0-9])/g, '$1 $2')
+        .replace(/\s*\bBattle\b\s*/gi, ' ')
+        .replace(/\s*\b20\d\d\b\s*/g, ' ')
+        .trim() || battleId;
+    console.log(`Active clan battle: id="${battleId}" title="${battleTitle}" (configData keys: ${Object.keys(battleData).join(', ')})`);
+    if (eventInfo?.id && eventInfo.id !== battleId) {
+        console.log(`${SUBDIR}/ is locked to battle "${eventInfo.id}" — active battle "${battleId}" is a different event, skipping.`);
+        process.exit(0);
+    }
+    return {
+        id: battleId,
+        title: TITLE_OVERRIDE || battleTitle,
+        startTime: battleData.StartTime ?? null,
+        finishTime: battleData.FinishTime ?? null,
+    };
+}
 
 async function mapWithConcurrency(items, limit, fn) {
     const results = new Array(items.length);
@@ -160,99 +173,157 @@ function buildClanFromDetail(detail, summary) {
     };
 }
 
-const startedAt = Date.now();
-
-const pageResults = await Promise.all(
-    Array.from({ length: TOP_PAGES }, (_, i) =>
-        fetchJson(`${API_BASE}/clans?page=${i + 1}&pageSize=${PAGE_SIZE}&sort=Points&sortOrder=desc`)
-    )
-);
-const summaries = [];
-for (const json of pageResults) {
-    const data = json?.data;
-    if (!Array.isArray(data) || !data.length) continue;
-    for (const raw of data) {
-        summaries.push({
-            Name: firstDefined(raw.Name, raw.name, raw.ClanName, raw.clanName) || 'Unknown',
-            Points: asNumber(firstDefined(raw.Points, raw.points, raw.Score, raw.score, raw.Total, raw.total)),
-            Members: asNumber(firstDefined(raw.Members, raw.members, raw.MemberCount, raw.memberCount)),
-        });
+async function loadClanBattleClans() {
+    const pageResults = await Promise.all(
+        Array.from({ length: TOP_PAGES }, (_, i) =>
+            fetchJson(`${API_BASE}/clans?page=${i + 1}&pageSize=${PAGE_SIZE}&sort=Points&sortOrder=desc`)
+        )
+    );
+    const summaries = [];
+    for (const json of pageResults) {
+        const data = json?.data;
+        if (!Array.isArray(data) || !data.length) continue;
+        for (const raw of data) {
+            summaries.push({
+                Name: firstDefined(raw.Name, raw.name, raw.ClanName, raw.clanName) || 'Unknown',
+                Points: asNumber(firstDefined(raw.Points, raw.points, raw.Score, raw.score, raw.Total, raw.total)),
+                Members: asNumber(firstDefined(raw.Members, raw.members, raw.MemberCount, raw.memberCount)),
+            });
+            if (summaries.length >= 1000) break;
+        }
         if (summaries.length >= 1000) break;
     }
-    if (summaries.length >= 1000) break;
-}
 
-if (!summaries.length) {
-    console.error('No clan data returned — skipping this snapshot.');
-    process.exit(0);
-}
-
-const withPoints = summaries.filter(s => s.Points > 0);
-console.log(`Fetched ${summaries.length} clan summaries (${withPoints.length} with points). Fetching detail…`);
-
-const DETAIL_DEADLINE = Date.now() + 45_000;
-let detailDone = 0;
-let detailFailed = 0;
-
-const detailedClans = await mapWithConcurrency(withPoints, DETAIL_CONCURRENCY, async summary => {
-    if (Date.now() > DETAIL_DEADLINE) {
-        detailFailed++;
-        return { Name: summary.Name, Points: summary.Points, Members: summary.Members, roster: [] };
-    }
-    const detailJson = await fetchJson(`${API_BASE}/clan/${encodeURIComponent(summary.Name)}`);
-    const detail = detailJson?.data;
-    detailDone++;
-    if (detailDone % 50 === 0) console.log(`  detail progress: ${detailDone}/${withPoints.length}`);
-
-    if (!detail) {
-        detailFailed++;
-        return { Name: summary.Name, Points: summary.Points, Members: summary.Members, roster: [] };
+    if (!summaries.length) {
+        console.error('No clan data returned — skipping this snapshot.');
+        process.exit(0);
     }
 
-    return buildClanFromDetail(detail, summary);
-});
-if (detailFailed) console.log(`  ${detailFailed} clan detail(s) skipped or failed.`);
+    const withPoints = summaries.filter(s => s.Points > 0);
+    console.log(`Fetched ${summaries.length} clan summaries (${withPoints.length} with points). Fetching detail…`);
 
-const emptyIdxs = detailedClans.map((c, i) => (!c.roster || !c.roster.length) && withPoints[i].Points > 0 ? i : -1).filter(i => i >= 0);
-if (emptyIdxs.length) {
-    console.log(`Retrying ${emptyIdxs.length} clans with empty roster at lower concurrency...`);
-    await new Promise(r => setTimeout(r, 1000));
-    const retryResults = await mapWithConcurrency(emptyIdxs, 5, async idx => {
-        const summary = withPoints[idx];
+    const DETAIL_DEADLINE = Date.now() + 45_000;
+    let detailDone = 0;
+    let detailFailed = 0;
+
+    const detailedClans = await mapWithConcurrency(withPoints, DETAIL_CONCURRENCY, async summary => {
+        if (Date.now() > DETAIL_DEADLINE) {
+            detailFailed++;
+            return { Name: summary.Name, Points: summary.Points, Members: summary.Members, roster: [] };
+        }
         const detailJson = await fetchJson(`${API_BASE}/clan/${encodeURIComponent(summary.Name)}`);
         const detail = detailJson?.data;
-        if (!detail) return null;
-        return { idx, result: buildClanFromDetail(detail, summary) };
-    });
-    let fixed = 0;
-    for (const r of retryResults) {
-        if (r && r.result.roster.length > 0) { detailedClans[r.idx] = r.result; fixed++; }
-    }
-    console.log(`  Retry fixed ${fixed}/${emptyIdxs.length} rosters.`);
+        detailDone++;
+        if (detailDone % 50 === 0) console.log(`  detail progress: ${detailDone}/${withPoints.length}`);
 
-    // Second, slower pass for clans the API still rate-limited.
-    const stillEmpty = emptyIdxs.filter(i => !detailedClans[i].roster?.length);
-    if (stillEmpty.length) {
-        console.log(`Second retry for ${stillEmpty.length} clans...`);
-        await new Promise(r => setTimeout(r, 3000));
-        const RETRY_DEADLINE = Date.now() + 90_000;
-        let fixed2 = 0;
-        await mapWithConcurrency(stillEmpty, 2, async idx => {
-            if (Date.now() > RETRY_DEADLINE) return;
+        if (!detail) {
+            detailFailed++;
+            return { Name: summary.Name, Points: summary.Points, Members: summary.Members, roster: [] };
+        }
+
+        return buildClanFromDetail(detail, summary);
+    });
+    if (detailFailed) console.log(`  ${detailFailed} clan detail(s) skipped or failed.`);
+
+    const emptyIdxs = detailedClans.map((c, i) => (!c.roster || !c.roster.length) && withPoints[i].Points > 0 ? i : -1).filter(i => i >= 0);
+    if (emptyIdxs.length) {
+        console.log(`Retrying ${emptyIdxs.length} clans with empty roster at lower concurrency...`);
+        await new Promise(r => setTimeout(r, 1000));
+        const retryResults = await mapWithConcurrency(emptyIdxs, 5, async idx => {
             const summary = withPoints[idx];
-            const detailJson = await fetchJson(`${API_BASE}/clan/${encodeURIComponent(summary.Name)}`, 4);
-            if (!detailJson?.data) return;
-            const result = buildClanFromDetail(detailJson.data, summary);
-            if (result.roster.length) { detailedClans[idx] = result; fixed2++; }
+            const detailJson = await fetchJson(`${API_BASE}/clan/${encodeURIComponent(summary.Name)}`);
+            const detail = detailJson?.data;
+            if (!detail) return null;
+            return { idx, result: buildClanFromDetail(detail, summary) };
         });
-        console.log(`  Second retry fixed ${fixed2}/${stillEmpty.length} rosters.`);
+        let fixed = 0;
+        for (const r of retryResults) {
+            if (r && r.result.roster.length > 0) { detailedClans[r.idx] = r.result; fixed++; }
+        }
+        console.log(`  Retry fixed ${fixed}/${emptyIdxs.length} rosters.`);
+
+        // Second, slower pass for clans the API still rate-limited.
+        const stillEmpty = emptyIdxs.filter(i => !detailedClans[i].roster?.length);
+        if (stillEmpty.length) {
+            console.log(`Second retry for ${stillEmpty.length} clans...`);
+            await new Promise(r => setTimeout(r, 3000));
+            const RETRY_DEADLINE = Date.now() + 90_000;
+            let fixed2 = 0;
+            await mapWithConcurrency(stillEmpty, 2, async idx => {
+                if (Date.now() > RETRY_DEADLINE) return;
+                const summary = withPoints[idx];
+                const detailJson = await fetchJson(`${API_BASE}/clan/${encodeURIComponent(summary.Name)}`, 4);
+                if (!detailJson?.data) return;
+                const result = buildClanFromDetail(detailJson.data, summary);
+                if (result.roster.length) { detailedClans[idx] = result; fixed2++; }
+            });
+            console.log(`  Second retry fixed ${fixed2}/${stillEmpty.length} rosters.`);
+        }
     }
+
+    const zeroClans = summaries.filter(s => s.Points <= 0).map(s => ({
+        Name: s.Name, Points: 0, Members: s.Members, roster: [],
+    }));
+    return [...detailedClans, ...zeroClans];
 }
 
-const zeroClans = summaries.filter(s => s.Points <= 0).map(s => ({
-    Name: s.Name, Points: 0, Members: s.Members, roster: [],
-}));
-const clans = [...detailedClans, ...zeroClans];
+function topSum(list, n = 100) {
+    return [...list].sort((a, b) => b.Points - a.Points).slice(0, n).reduce((s, c) => s + (Number(c.Points) || 0), 0);
+}
+
+// A league runs until the next one resets everyone's points; detect that and stop writing.
+function checkLeagueLock(clans, meta) {
+    const apiId = String(meta.ConfigName || meta.configName || meta.EventName || meta.Name || meta.name || '') || null;
+    const markEnded = reason => {
+        writeFileSync(EVENT_FILE, JSON.stringify({ ...eventInfo, ended: true, endedReason: reason, endedAt: Date.now() }));
+        console.log(`${SUBDIR}/ league ended: ${reason}. Folder is now frozen.`);
+        process.exit(0);
+    };
+    if (eventInfo?.apiId && apiId && apiId !== eventInfo.apiId) markEnded(`API now reports "${apiId}" instead of "${eventInfo.apiId}"`);
+    let prev = null;
+    if (existsSync(HISTORY_FILE)) {
+        try { prev = JSON.parse(readFileSync(HISTORY_FILE, 'utf8')).at(-1) || null; } catch (_) { prev = null; }
+    }
+    if (prev?.clans?.length) {
+        if (clans.length < prev.clans.length * 0.5) {
+            console.log(`Only ${clans.length} leagues returned (last snapshot had ${prev.clans.length}) — looks partial, skipping this run.`);
+            process.exit(0);
+        }
+        const prevSum = topSum(prev.clans), curSum = topSum(clans);
+        const prevTop = new Set([...prev.clans].sort((a, b) => b.Points - a.Points).slice(0, 50).map(c => c.Name));
+        const overlap = [...clans].sort((a, b) => b.Points - a.Points).slice(0, 50).filter(c => prevTop.has(c.Name)).length / 50;
+        if (prevSum > 0 && curSum < prevSum * 0.2 && overlap < 0.5) {
+            markEnded(`points reset (top-100 total ${prevSum} -> ${curSum}, ${Math.round(overlap * 100)}% of top 50 unchanged)`);
+        }
+    }
+    return {
+        id: eventInfo?.id || apiId || `league-${new Date().toISOString().slice(0, 10)}`,
+        apiId: eventInfo?.apiId || apiId,
+        kind: 'league',
+        title: TITLE_OVERRIDE || eventInfo?.title || apiId || 'League',
+        startTime: eventInfo?.startTime ?? Math.floor(Date.now() / 1000),
+        finishTime: null,
+    };
+}
+
+const startedAt = Date.now();
+let clans;
+let nameHints = {};
+if (MODE === 'league') {
+    const league = await loadLeagues();
+    if (!league.clans.length) {
+        console.log('No league data returned — skipping snapshot.');
+        process.exit(0);
+    }
+    eventInfo = checkLeagueLock(league.clans, league.meta);
+    clans = league.clans;
+    nameHints = league.nameHints;
+} else {
+    eventInfo = await detectClanBattle();
+    clans = await loadClanBattleClans();
+}
+mkdirSync(SUBDIR, { recursive: true });
+writeFileSync(EVENT_FILE, JSON.stringify(eventInfo));
 // Snapshot time = when the data was fetched, so slow name lookups don't skew the 10-minute spacing.
 const now = Date.now();
 
@@ -271,6 +342,8 @@ let resolvedCache = {};
 if (existsSync(RESOLVED_CACHE_FILE)) {
     try { resolvedCache = JSON.parse(readFileSync(RESOLVED_CACHE_FILE, 'utf8')); } catch (_) { resolvedCache = {}; }
 }
+// Names the API already gave us (leagues include DisplayName) — no Roblox lookup needed for these.
+Object.assign(resolvedCache, nameHints);
 
 // Top players first, then the remaining clan members (highest points first) while time allows;
 // the cache carries over, so every member gets a name within a few runs.
