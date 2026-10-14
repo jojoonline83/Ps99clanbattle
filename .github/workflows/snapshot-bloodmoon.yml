@@ -14,6 +14,8 @@ env:
   EVENT_DIR: bloodmoon
   # Roblox user IDs always included in the individual leaderboard (comma-separated), e.g. E_Ethan
   TRACK_PLAYERS: '1574888668'
+  # Bump to start the per-member gain history from scratch (old cache entries are ignored).
+  HISTORY_EPOCH: '2'
 
 jobs:
   snapshot:
@@ -30,8 +32,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: roster-state
-          key: roster-${{ env.EVENT_DIR }}-${{ github.run_id }}
-          restore-keys: roster-${{ env.EVENT_DIR }}-
+          key: roster-${{ env.EVENT_DIR }}-${{ env.HISTORY_EPOCH }}-${{ github.run_id }}
+          restore-keys: roster-${{ env.EVENT_DIR }}-${{ env.HISTORY_EPOCH }}-
 
       - name: Record and push snapshot (retries on conflict)
         env:
@@ -70,4 +72,4 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: roster-state
-          key: roster-${{ env.EVENT_DIR }}-${{ github.run_id }}
+          key: roster-${{ env.EVENT_DIR }}-${{ env.HISTORY_EPOCH }}-${{ github.run_id }}
