@@ -12,9 +12,9 @@ concurrency:
 
 env:
   EVENT_DIR: bloodmoon
-  # Roblox user IDs always included in the individual leaderboard (comma-separated), e.g. E_Ethan = 268209915
+  # Roblox user IDs always included in the individual leaderboard (comma-separated), e.g. E_Ethan = 268209915, SpeedyLight = 28398472
   # (only works for players the API reports, i.e. members of leagues it samples)
-  TRACK_PLAYERS: '268209915'
+  TRACK_PLAYERS: '268209915,28398472'
   # Bump to start the per-member gain history from scratch (old cache entries are ignored).
   HISTORY_EPOCH: '2'
 
