@@ -1,0 +1,26 @@
+name: Probe League Players API
+
+# Diagnostic only: logs which endpoints report points for players outside leagues.
+# Runs once when this file is pushed to the default branch; re-runnable from the Actions tab.
+on:
+  push:
+    branches: [claude/ps99-clan-battle-tracker-5N9NW]
+    paths: [.github/workflows/probe-league-players.yml]
+  workflow_dispatch:
+    inputs:
+      usernames:
+        description: 'Roblox usernames to check (space-separated)'
+        default: 'e_ethan'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - run: node .github/scripts/probe-league-players.mjs ${{ github.event.inputs.usernames || 'e_ethan' }}
