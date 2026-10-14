@@ -72,7 +72,7 @@ When creating a new event tracker page:
 - `--league` reads `/v1/leagues` via `.github/scripts/league-source.mjs` and stores leagues in the same files/shape as clans (history/players/rosters); names come from the API's DisplayName
 - Lock: no "active league" API, so the folder is marked `ended` in `event.json` when the next league's points reset is detected; it is never written after that
 - Live clan-API calls are off in `bloodmoon.js` (`LIVE_API = false`); search is over the saved Top 1000
-- Note: the older `spacemining/` league snapshot has no lock and has been recording Blood Moon data since the 10 Oct reset
+- The older `spacemining/` league snapshot was stopped on 14 Oct (Space Mining ended; it had no lock and recorded Blood Moon data after the 10 Oct reset)
 
 ## Reusable Clan Battle Setup (next event)
 
