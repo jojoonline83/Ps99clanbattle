@@ -132,3 +132,17 @@ for (const path of [
 for (const u of users) {
     show(`/v1/players/${u.name}?include=stats`, await get(`${V1}/players/${encodeURIComponent(u.name)}?include=stats`));
 }
+
+console.log('\n=== clan battle status ===');
+{
+    const r = await get(`${API}/activeClanBattle`);
+    console.log(`/api/activeClanBattle -> ${r.status} ${r.text.slice(0, 1500).replace(/\s+/g, ' ')}`);
+    try {
+        const d = JSON.parse(r.text).data;
+        const c = d?.configData || {};
+        const fmt = t => (t ? new Date(t * 1000).toISOString() : '-');
+        console.log(`configName=${d?.configName} title=${c.Title} start=${fmt(c.StartTime)} finish=${fmt(c.FinishTime)} now=${new Date().toISOString()}`);
+    } catch (_) {}
+    const top = await get(`${API}/clans?page=1&pageSize=3&sort=Points&sortOrder=desc`);
+    console.log(`/api/clans top3 -> ${top.status} ${top.text.slice(0, 500).replace(/\s+/g, ' ')}`);
+}
