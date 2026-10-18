@@ -79,6 +79,7 @@ When creating a new event tracker page:
 - Created from the Hatch War template with no code changes: `diamondmountain.html` (Clan Leaderboard) + `diamondmountain-players.html` (Individual Players), `diamondmountain.js`, `diamondmountain-players.js`, `diamondmountain.css`
 - Snapshot: `.github/scripts/snapshot-clanbattle.mjs diamondmountain` via `.github/workflows/snapshot-diamondmountain.yml` (relayed through `WORKFLOWS` in `snapshot-taphero.yml`); auto-detects and locks to the active clan battle
 - Same files, deltas, Actions-cache roster history and name handling as Hatch War; no Discord alerts yet
+- 18 Oct: started in-game but the API had not published it — `/api/activeClanBattle` still returned the finished HatchWarBattle2026 (modified 10 Oct) and every top clan's newest `Battles` entry was Hatch War with no point movement. `snapshot-clanbattle.mjs` now falls back to the top clans' newest unfinished (no `EarnedMedal`) `Battles` key when `activeClanBattle` is stale, so it locks on as soon as either source shows the new battle
 
 ## Reusable Clan Battle Setup (next event)
 
