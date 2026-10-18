@@ -56,7 +56,12 @@ jobs:
             for f in $BLOODMOON_FILES; do
               git show ${{ github.sha }}:"$f" > "bloodmoon/$f" 2>/dev/null || echo "Skipping $f (not in source)"
             done
-            KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/scripts/snapshot-pinata.mjs .github/scripts/snapshot-cyberpunk.mjs .github/scripts/snapshot-clanbattle.mjs .github/scripts/roblox-names.mjs .github/scripts/league-source.mjs .github/scripts/merge-names.mjs .github/scripts/resolve-names.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/snapshot-pinata.yml .github/workflows/snapshot-cyberpunk.yml .github/workflows/snapshot-soullantern.yml .github/workflows/names-soullantern.yml .github/workflows/snapshot-bloodmoon.yml .github/workflows/deploy.yml"
+            mkdir -p diamondmountain
+            DIAMONDMOUNTAIN_FILES="diamondmountain.html diamondmountain.js diamondmountain-players.html diamondmountain-players.js diamondmountain.css"
+            for f in $DIAMONDMOUNTAIN_FILES; do
+              git show ${{ github.sha }}:"$f" > "diamondmountain/$f" 2>/dev/null || echo "Skipping $f (not in source)"
+            done
+            KEEP=".nojekyll .github/scripts/snapshot.mjs .github/scripts/snapshot-league.mjs .github/scripts/snapshot-pinata.mjs .github/scripts/snapshot-cyberpunk.mjs .github/scripts/snapshot-clanbattle.mjs .github/scripts/roblox-names.mjs .github/scripts/league-source.mjs .github/scripts/merge-names.mjs .github/scripts/resolve-names.mjs .github/workflows/snapshot.yml .github/workflows/snapshot-taphero.yml .github/workflows/snapshot-pinata.yml .github/workflows/snapshot-cyberpunk.yml .github/workflows/snapshot-soullantern.yml .github/workflows/names-soullantern.yml .github/workflows/snapshot-bloodmoon.yml .github/workflows/snapshot-diamondmountain.yml .github/workflows/deploy.yml"
             for f in $KEEP; do
               git checkout ${{ github.sha }} -- "$f" 2>/dev/null || echo "Skipping $f (not in source)"
             done

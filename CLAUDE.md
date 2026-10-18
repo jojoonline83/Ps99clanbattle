@@ -75,6 +75,11 @@ When creating a new event tracker page:
 - Live clan-API calls are off in `bloodmoon.js` (`LIVE_API = false`); search is over the saved Top 1000
 - The older `spacemining/` league snapshot was stopped on 14 Oct (Space Mining ended; it had no lock and recorded Blood Moon data after the 10 Oct reset)
 
+### Diamond Mountain (Clan Battle) — `diamondmountain/`
+- Created from the Hatch War template with no code changes: `diamondmountain.html` (Clan Leaderboard) + `diamondmountain-players.html` (Individual Players), `diamondmountain.js`, `diamondmountain-players.js`, `diamondmountain.css`
+- Snapshot: `.github/scripts/snapshot-clanbattle.mjs diamondmountain` via `.github/workflows/snapshot-diamondmountain.yml` (relayed through `WORKFLOWS` in `snapshot-taphero.yml`); auto-detects and locks to the active clan battle
+- Same files, deltas, Actions-cache roster history and name handling as Hatch War; no Discord alerts yet
+
 ## Reusable Clan Battle Setup (next event)
 
 `snapshot-clanbattle.mjs <subdir>` auto-detects the active battle and locks `<subdir>` to it (via `event.json`), so a finished event is never overwritten. For a new league add `--league --title "Name"` and copy the `bloodmoon*` files instead. For a new clan battle:
