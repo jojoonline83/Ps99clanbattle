@@ -161,3 +161,27 @@ for (const name of ['UN0', 'SOPU']) {
         }
     } catch (e) { show(`/api/clan/${name}`, r); }
 }
+
+console.log('\n=== looking for a new clan battle (v8) ===');
+{
+    const r = await get(`${API}/activeClanBattle`);
+    try { const d = JSON.parse(r.text).data; console.log(`activeClanBattle: ${d?.configName} modified ${d?.dateModified} finish ${new Date((d?.configData?.FinishTime || 0) * 1000).toISOString()}`); } catch (_) { show('activeClanBattle', r); }
+    const list = async () => { try { return JSON.parse((await get(`${API}/clans?page=1&pageSize=30&sort=Points&sortOrder=desc`)).text).data || []; } catch (_) { return []; } };
+    const a = await list();
+    const keyCounts = {};
+    for (const c of a) {
+        try {
+            const d = JSON.parse((await get(`${API}/clan/${encodeURIComponent(c.Name)}`)).text).data || {};
+            const keys = Object.keys(d.Battles || {});
+            const last = keys.at(-1);
+            keyCounts[last] = (keyCounts[last] || 0) + 1;
+            const b = d.Battles?.[last] || {};
+            if (last !== 'HatchWarBattle2026') console.log(`  ${c.Name}: newest battle ${last} Points=${b.Points} contributors=${(b.PointContributions || []).length} medal=${b.EarnedMedal ?? '-'}`);
+        } catch (_) {}
+    }
+    console.log(`newest battle key across top ${a.length} clans: ${JSON.stringify(keyCounts)}`);
+    await new Promise(r => setTimeout(r, 60000));
+    const b = await list();
+    const moved = a.filter(x => { const y = b.find(z => z.Name === x.Name); return y && y.Points !== x.Points; });
+    console.log(`clans whose /api/clans Points changed within 60s: ${moved.length}/${a.length} ${moved.slice(0, 5).map(x => `${x.Name} ${x.Points}->${b.find(z => z.Name === x.Name).Points}`).join(', ')}`);
+}

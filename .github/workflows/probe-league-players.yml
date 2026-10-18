@@ -1,6 +1,6 @@
 name: Probe League Players API
 
-# Diagnostic only: logs which endpoints report points for players outside leagues (v7: clan battle entries).
+# Diagnostic only: logs which endpoints report points for players outside leagues (v8: find new clan battle).
 # Runs once when this file is pushed to the default branch; re-runnable from the Actions tab.
 on:
   push:
