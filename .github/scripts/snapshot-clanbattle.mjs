@@ -71,13 +71,37 @@ if (eventInfo?.ended) {
 // Clan battle config name; selects the right entry in each clan's Battles.
 let battleId = null;
 
+// /activeClanBattle can lag behind the game (e.g. it kept reporting the finished Hatch War
+// for days). Fallback: look at the top clans' Battles for a newer entry that has no medal yet.
+async function findLiveBattleFromClans(staleId) {
+    const top = (await fetchJson(`${API_BASE}/clans?page=1&pageSize=5&sort=Points&sortOrder=desc`))?.data || [];
+    const counts = {};
+    for (const c of top) {
+        const battles = (await fetchJson(`${API_BASE}/clan/${encodeURIComponent(c.Name)}`))?.data?.Battles || {};
+        // Only the clan's newest entry can be the live battle; medals are only awarded once a battle is over.
+        const key = Object.keys(battles).at(-1);
+        if (!key || key === staleId || battles[key].EarnedMedal) continue;
+        counts[key] = (counts[key] || 0) + 1;
+    }
+    // Require agreement from most of the top clans so one odd clan can't pick the battle.
+    const best = Object.entries(counts).sort((x, y) => y[1] - x[1])[0];
+    return best && best[1] >= Math.max(1, Math.ceil(top.length / 2)) ? best[0] : null;
+}
+
 async function detectClanBattle() {
     const battleJson = await fetchJson(`${API_BASE}/activeClanBattle`);
-    const activeBattle = battleJson?.data;
-    const battleData = activeBattle?.configData;
+    let activeBattle = battleJson?.data;
+    let battleData = activeBattle?.configData;
     if (!battleData || Date.now() / 1000 > battleData.FinishTime) {
-        console.log('No active clan battle — skipping snapshot.');
-        process.exit(0);
+        const staleId = activeBattle?.configName || null;
+        const liveKey = await findLiveBattleFromClans(staleId);
+        if (!liveKey) {
+            console.log(`No active clan battle (activeClanBattle reports "${staleId}", finished) and no newer unfinished battle in the top clans — skipping snapshot.`);
+            process.exit(0);
+        }
+        console.log(`activeClanBattle is stale ("${staleId}"); using live battle "${liveKey}" found in the top clans.`);
+        activeBattle = { configName: liveKey };
+        battleData = { Title: liveKey, StartTime: null, FinishTime: null };
     }
     battleId = String(activeBattle.configName || activeBattle._id || battleData.Title || battleData.Name || 'unknown');
     // "HatchWarBattle2026" -> "Hatch War"
