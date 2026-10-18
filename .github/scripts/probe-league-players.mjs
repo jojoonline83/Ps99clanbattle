@@ -146,3 +146,18 @@ console.log('\n=== clan battle status ===');
     const top = await get(`${API}/clans?page=1&pageSize=3&sort=Points&sortOrder=desc`);
     console.log(`/api/clans top3 -> ${top.status} ${top.text.slice(0, 500).replace(/\s+/g, ' ')}`);
 }
+
+console.log('\n=== clan battle entries in clan detail ===');
+for (const name of ['UN0', 'SOPU']) {
+    const r = await get(`${API}/clan/${name}`);
+    try {
+        const d = JSON.parse(r.text).data || {};
+        const battles = d.Battles || {};
+        console.log(`${name}: detail keys = ${Object.keys(d).join(', ')}`);
+        for (const [k, b] of Object.entries(battles)) {
+            const pc = b.PointContributions || [];
+            const top = [...pc].sort((a, b) => b.Points - a.Points)[0];
+            console.log(`  battle ${k}: keys=${Object.keys(b).join(',')} Points=${b.Points} contributors=${pc.length} top=${JSON.stringify(top)} earned=${JSON.stringify(b.EarnedMedal ?? b.ProcessedAwards ?? null)}`);
+        }
+    } catch (e) { show(`/api/clan/${name}`, r); }
+}
